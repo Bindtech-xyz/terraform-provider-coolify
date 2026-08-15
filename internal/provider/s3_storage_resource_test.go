@@ -10,7 +10,7 @@ import (
 )
 
 func TestAccS3StorageResource(t *testing.T) {
-	config := `
+	config := testAccProviderConfig() + `
 resource "coolify_s3_storage" "test" {
   name       = "tf-acc-s3"
   endpoint   = "https://s3.eu-west-1.amazonaws.com"

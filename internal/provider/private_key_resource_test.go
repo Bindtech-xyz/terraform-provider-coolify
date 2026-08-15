@@ -30,7 +30,7 @@ func testAccThrowawayKey(t *testing.T) string {
 }
 
 func TestAccPrivateKeyResource(t *testing.T) {
-	config := `
+	config := testAccProviderConfig() + `
 resource "coolify_private_key" "test" {
   name        = "tf-acc-key"
   description = "created by acceptance tests"

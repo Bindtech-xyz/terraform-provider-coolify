@@ -40,3 +40,27 @@ func testAccImportByUUID(resourceName string) func(*terraform.State) (string, er
 		return rs.Primary.Attributes["uuid"], nil
 	}
 }
+
+// testAccProviderConfig prepends an explicit `provider "coolify" {}` block
+// carrying edge-auth headers when CF_ACCESS_CLIENT_ID/CF_ACCESS_CLIENT_SECRET
+// are set — needed when the target instance sits behind an authenticating
+// proxy (Cloudflare Access, ...). endpoint/token are deliberately left out
+// here: they still come from COOLIFY_ENDPOINT/COOLIFY_TOKEN, matched by every
+// test's testAccPreCheck. Returns "" when neither env var is set, so tests
+// against a directly-reachable instance are unaffected — every TestStep
+// prepends this, not just the ones added for this scenario.
+func testAccProviderConfig() string {
+	id := os.Getenv("CF_ACCESS_CLIENT_ID")
+	secret := os.Getenv("CF_ACCESS_CLIENT_SECRET")
+	if id == "" || secret == "" {
+		return ""
+	}
+	return fmt.Sprintf(`
+provider "coolify" {
+  headers = {
+    "CF-Access-Client-Id"     = %q
+    "CF-Access-Client-Secret" = %q
+  }
+}
+`, id, secret)
+}

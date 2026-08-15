@@ -12,7 +12,7 @@ import (
 // TestAccEnvironmentResource exercises the project → environment →
 // shared-variable chain, the backbone of any multi-app layout.
 func TestAccEnvironmentResource(t *testing.T) {
-	config := `
+	config := testAccProviderConfig() + `
 resource "coolify_project" "test" {
   name = "tf-acc-env-project"
 }

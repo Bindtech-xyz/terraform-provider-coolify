@@ -53,7 +53,7 @@ func TestAccProjectResource(t *testing.T) {
 }
 
 func testAccProjectResourceConfig(name, description string) string {
-	return `
+	return testAccProviderConfig() + `
 resource "coolify_project" "test" {
   name        = "` + name + `"
   description = "` + description + `"

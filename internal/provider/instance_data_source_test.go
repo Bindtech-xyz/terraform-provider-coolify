@@ -15,7 +15,7 @@ func TestAccInstanceDataSource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `data "coolify_instance" "this" {}`,
+				Config: testAccProviderConfig() + `data "coolify_instance" "this" {}`,
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue("data.coolify_instance.this",
 						tfjsonpath.New("healthy"), knownvalue.Bool(true)),
@@ -33,7 +33,7 @@ func TestAccServiceTemplatesDataSource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `data "coolify_service_templates" "all" {}`,
+				Config: testAccProviderConfig() + `data "coolify_service_templates" "all" {}`,
 				ConfigStateChecks: []statecheck.StateCheck{
 					// Assert on gitea, one of the oldest entries of the live
 					// catalog (asserting on the full list would chase a moving
@@ -53,7 +53,7 @@ func TestAccTeamDataSource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `data "coolify_team" "current" {}`,
+				Config: testAccProviderConfig() + `data "coolify_team" "current" {}`,
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue("data.coolify_team.current",
 						tfjsonpath.New("id"), knownvalue.NotNull()),

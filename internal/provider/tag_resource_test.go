@@ -15,7 +15,7 @@ func TestAccTagResource(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `resource "coolify_tag" "test" { name = "tf-acc-tag" }`,
+				Config: testAccProviderConfig() + `resource "coolify_tag" "test" { name = "tf-acc-tag" }`,
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue("coolify_tag.test",
 						tfjsonpath.New("name"), knownvalue.StringExact("tf-acc-tag")),
@@ -31,7 +31,7 @@ func TestAccTagResource(t *testing.T) {
 				ImportStateVerifyIdentifierAttribute: "uuid",
 			},
 			{
-				Config: `resource "coolify_tag" "test" { name = "tf-acc-tag-renamed" }`,
+				Config: testAccProviderConfig() + `resource "coolify_tag" "test" { name = "tf-acc-tag-renamed" }`,
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue("coolify_tag.test",
 						tfjsonpath.New("name"), knownvalue.StringExact("tf-acc-tag-renamed")),
