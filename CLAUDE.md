@@ -67,7 +67,11 @@ Deliberate design choices (do not "fix" these):
   history) is **deliberately not on this resource, and can't be**: it has no REST API
   route at all, only the Livewire settings UI (`app/Livewire/Settings/Advanced.php`,
   confirmed by grepping `routes/api.php`). Don't add it here; there is no endpoint to
-  call.
+  call. Reported by a consumer project running this instance behind a Cloudflare
+  Tunnel: Coolify seeds `allowed_ips` with its own `public_ipv4` at install time, and
+  since tunnel traffic never arrives from that address, the 403 ("You are not allowed
+  to access the API.") can reappear on its own even after being fixed once — it isn't
+  necessarily a regression, check the current value before assuming something broke.
 - `coolify_resource_tag` attaches a tag (creating it if needed) to an
   application/database/service. `tag_name` is Required but never adopted from the API
   into state — Coolify lowercases tag names server-side, so state always echoes config

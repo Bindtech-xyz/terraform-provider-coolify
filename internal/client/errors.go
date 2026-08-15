@@ -41,6 +41,20 @@ func (e *Error) Error() string {
 		}
 	}
 
+	// Message is Coolify's own {"message": "..."} field, decoded — but a
+	// request can also be rejected by something in front of Coolify (a proxy,
+	// an edge auth layer) whose response never matches that shape at all, in
+	// which case Message silently falls back to the bare HTTP status text and
+	// the actual explanation only exists in the raw body. Rather than force
+	// whoever hits this to go re-run the request with curl to see it (found
+	// live: exactly that happened diagnosing a 403 from Coolify's own
+	// allowed_ips gate), always surface it — the minor duplication when Body
+	// is already just `{"message": "..."}` costs far less than a diagnosis
+	// silently withheld.
+	if e.Body != "" {
+		fmt.Fprintf(&b, "\n  body: %s", e.Body)
+	}
+
 	return b.String()
 }
 
