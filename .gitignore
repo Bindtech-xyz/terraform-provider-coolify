@@ -13,3 +13,9 @@ crash.log
 .idea/
 .vscode/
 *.swp
+
+# Maintainer's personal acceptance-test secrets and Task tooling — depends
+# on machine-local SOPS/age config outside this repo, not needed to build,
+# test, or use the published provider. Kept locally, never committed.
+/Taskfile.yml
+/secrets/
