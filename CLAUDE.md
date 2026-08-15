@@ -9,7 +9,8 @@ A Terraform provider for Coolify v4 (self-hostable PaaS), built on
 `github.com/d3nailabs/terraform-provider-coolify`. Registry address baked into
 `main.go`: `registry.terraform.io/d3nailabs/coolify`.
 
-12 resources / 10 data sources. Deliberate design choices (do not "fix" these):
+18 resources / 11 data sources — coverage tracks the Coolify docs sidebar (every
+API-manageable concept). Deliberate design choices (do not "fix" these):
 
 - `coolify_application` is ONE resource covering the five API create endpoints
   (public git / deploy key / GitHub App / dockerfile / docker image). The mode is
@@ -25,6 +26,16 @@ A Terraform provider for Coolify v4 (self-hostable PaaS), built on
   (application/service/database parent, addressed by uuid, updated by key) and
   `coolify_shared_environment_variable` (team/project/environment/server scope,
   addressed by numeric id).
+- `coolify_storage` and `coolify_scheduled_task` follow the same parent_type/parent_uuid
+  pattern as env vars. `coolify_notification_settings` (per channel) and
+  `coolify_server_settings` (nested blocks per sub-endpoint) are SINGLETON resources:
+  Create adopts existing settings, Delete disables (notifications) or is a no-op
+  (server settings) — the API never deletes those objects. Singleton client methods use
+  map[string]any bodies on purpose (Laravel fillable-driven field sets); the typed
+  schema lives in the resource layer, and only configured fields are sent/refreshed so
+  unmanaged settings never diff.
+- `coolify_github_app` is addressed by numeric id (not uuid) — the API has no
+  single-app GET, reads filter the list.
 
 ## Commands
 

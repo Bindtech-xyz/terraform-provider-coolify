@@ -205,6 +205,12 @@ func (p *coolifyProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewEnvVarResource,
 		NewSharedEnvVarResource,
 		NewS3StorageResource,
+		NewStorageResource,
+		NewScheduledTaskResource,
+		NewDatabaseBackupResource,
+		NewNotificationSettingsResource,
+		NewServerSettingsResource,
+		NewGithubAppResource,
 	}
 }
 
@@ -220,6 +226,7 @@ func (p *coolifyProvider) DataSources(_ context.Context) []func() datasource.Dat
 		NewDatabasesDataSource,
 		NewTeamDataSource,
 		NewServiceTemplatesDataSource,
+		NewDeploymentsDataSource,
 	}
 }
 

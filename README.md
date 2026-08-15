@@ -22,13 +22,22 @@ not the lagging OpenAPI spec), on the
 | Service catalog (**dynamic**, 300+ templates from the live CDN feed) | — | `coolify_service_templates` |
 | Env vars (application/service/database) | `coolify_environment_variable` | — |
 | Shared env vars (team/project/environment/server) | `coolify_shared_environment_variable` | — |
+| Persistent storage (volumes & file mounts) | `coolify_storage` | — |
+| Scheduled tasks (cron) | `coolify_scheduled_task` | — |
+| Database backups (+ S3, retention) | `coolify_database_backup` | — |
 | S3 storages | `coolify_s3_storage` | — |
+| Notifications (email/discord/slack/telegram/pushover/webhook) | `coolify_notification_settings` | — |
+| Server settings (proxy, docker cleanup, Sentinel, Cloudflare Tunnel) | `coolify_server_settings` | — |
+| GitHub Apps (private repos CI/CD) | `coolify_github_app` | — |
+| Deployments | — | `coolify_deployments` |
 | Tags | `coolify_tag` | — |
 | Teams | — | `coolify_team` |
 
-This intentionally covers the gaps left by the existing community providers
-(environments, both env-var families, destinations, S3, tags, all 8 database engines,
-all 5 application modes, dynamic service catalog).
+Coverage tracks the [Coolify docs sidebar](https://coolify.io/docs) — every
+API-manageable concept in Applications, Databases, Services, Knowledge Base
+(destinations, S3, env vars, persistent storage, cron, notifications, server settings)
+and Integrations (Cloudflare Tunnel) has a resource or data source. This also covers
+the gaps left by the existing community providers.
 
 ## Usage
 
@@ -137,7 +146,8 @@ TF_ACC=1 go test ./internal/provider/ -v -run TestAccProjectResource
 
 ## Roadmap
 
-GitHub/GitLab Apps, scheduled tasks, database backups, server proxy/log-drain settings,
-notifications, cloud provisioning (Hetzner/DigitalOcean/Vultr), deployments data source.
-The client layer (`internal/client/`) already models the transport; each is an additive
-resource following the same pattern.
+GitLab Apps, server log-drains, volume backup schedules, preview deployments, and cloud
+VM provisioning (Hetzner/DigitalOcean/Vultr + cloud tokens + cloud-init scripts — these
+create real machines, deliberately left out for now). The client layer
+(`internal/client/`) already models the transport; each is an additive resource
+following the same pattern.
