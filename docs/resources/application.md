@@ -62,7 +62,7 @@ resource "coolify_application" "nginx" {
 - `build_command` (String) Override the build command.
 - `build_pack` (String) Build pack for git-based modes: `nixpacks`, `static`, `dockerfile`, `dockercompose` or `railpack`. Left unset for non-git modes (`dockerfile`/`dockerimage`), Coolify reports back the effective build strategy instead — e.g. `dockerimage` — which is not itself a settable value here, only an observed one.
 - `custom_docker_run_options` (String) Extra options appended to `docker run`.
-- `description` (String) Free-form description.
+- `description` (String) Free-form description. Coolify only accepts letters (including Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' " + = * @ / &` — other punctuation (e.g. a colon or semicolon) is rejected with a 422.
 - `destination_uuid` (String) Destination (Docker network) UUID. Required when the server has several destinations. Changing it forces replacement.
 - `docker_registry_image_name` (String) Docker image to run (e.g. `nginx`). Setting it selects the docker-image mode.
 - `docker_registry_image_tag` (String) Image tag. Defaults to `latest`.

@@ -178,8 +178,10 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Free-form description.",
-				Optional:            true,
+				MarkdownDescription: "Free-form description. Coolify only accepts letters (including " +
+					"Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' \" + = * @ / &` — other " +
+					"punctuation (e.g. a colon or semicolon) is rejected with a 422.",
+				Optional: true,
 			},
 			"image": schema.StringAttribute{
 				MarkdownDescription: "Docker image override (e.g. `postgres:16-alpine`).",

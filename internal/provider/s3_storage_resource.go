@@ -61,8 +61,10 @@ func (r *s3StorageResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Free-form description.",
-				Optional:            true,
+				MarkdownDescription: "Free-form description. Coolify only accepts letters (including " +
+					"Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' \" + = * @ / &` — other " +
+					"punctuation (e.g. a colon or semicolon) is rejected with a 422.",
+				Optional: true,
 			},
 			"endpoint": schema.StringAttribute{
 				MarkdownDescription: "S3 endpoint URL, e.g. `https://s3.eu-west-1.amazonaws.com` " +

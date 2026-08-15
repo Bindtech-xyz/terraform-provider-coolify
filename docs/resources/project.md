@@ -28,7 +28,7 @@ resource "coolify_project" "example" {
 
 ### Optional
 
-- `description` (String) Free-form description.
+- `description` (String) Free-form description. Coolify only accepts letters (including Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' " + = * @ / &` — other punctuation (e.g. a colon or semicolon) is rejected with a 422.
 
 ### Read-Only
 

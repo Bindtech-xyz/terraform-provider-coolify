@@ -44,7 +44,7 @@ output "database_url" {
 
 - `clickhouse_admin_password` (String, Sensitive) Clickhouse admin password (clickhouse engine).
 - `clickhouse_admin_user` (String, Sensitive) Clickhouse admin user (clickhouse engine).
-- `description` (String) Free-form description.
+- `description` (String) Free-form description. Coolify only accepts letters (including Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' " + = * @ / &` — other punctuation (e.g. a colon or semicolon) is rejected with a 422.
 - `destination_uuid` (String) Destination UUID (required when the server has several).
 - `dragonfly_password` (String, Sensitive) Dragonfly password (dragonfly engine).
 - `environment_name` (String) Environment name. Exactly one of `environment_name`/`environment_uuid`.

@@ -158,3 +158,33 @@ released yet — everything below is `[Unreleased]`.
   deploying a real cloud-init script end to end. Fixed by echoing the configured value
   back into state on create/read/update instead of adopting the API's normalized value;
   import (no prior config to echo) still adopts the API's value.
+- `coolify_server.instant_validate`'s description claimed a bad key/IP would "fail the
+  apply instead of leaving a broken server behind." That's not how Coolify behaves:
+  `create-server` dispatches SSH validation as an asynchronous queued job and always
+  returns 201 immediately, regardless of `instant_validate` — `is_reachable`/`is_usable`
+  read back `false` right after `apply` even with a correct key and IP, and only reflect
+  reality once the background check completes. Found live: a server created against an
+  unreachable RFC 5737 test address succeeded outright instead of failing the apply as
+  documented. Corrected the description; no code change was needed since the
+  Computed/Default plumbing was already right, only the claim about it was wrong.
+- Documented, on every resource with a free-form `description` (`application`,
+  `database`, `environment`, `project`, `server`, `s3_storage`, `service`), the
+  character restriction Coolify enforces server-side (letters, numbers, whitespace, and
+  `- _ . , ! ? ( ) ' " + = * @ / &` — notably no colon or semicolon) that previously
+  surfaced only as an opaque 422 on first use. Found live creating a project whose
+  description used a colon. `coolify_private_key.description` is intentionally
+  unchanged — that field validates as plain `string|max:255` with no such restriction.
+
+### Verified
+
+- Every one of the 25 resources and 22 data sources has now been exercised against a
+  real Coolify instance at least once — including `coolify_server`, `coolify_tag`,
+  `coolify_destination`, `coolify_shared_environment_variable`, `coolify_s3_storage`,
+  `coolify_scheduled_task`, `coolify_notification_settings`, and the singular/plural
+  data source pairs (`coolify_project`/`coolify_projects`, `coolify_server`/
+  `coolify_servers`, `coolify_team`/`coolify_teams`) and `coolify_instance`, which a
+  first sweep had missed. Where a resource depends on a genuine external system (a real
+  cloud provider account, a real SMTP/S3 endpoint), it was exercised with well-formed
+  but non-functional credentials, confirming the full request chain reaches Coolify's
+  real server-side validation and that validation surfaces as a clean diagnostic rather
+  than a provider crash — the same bar every earlier fix in this changelog was held to.

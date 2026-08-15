@@ -35,8 +35,8 @@ resource "coolify_server" "example" {
 
 ### Optional
 
-- `description` (String) Free-form description.
-- `instant_validate` (Boolean) Validate the SSH connection immediately on create. Defaults to `true` so a bad key or IP fails the apply instead of leaving a broken server behind.
+- `description` (String) Free-form description. Coolify only accepts letters (including Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' " + = * @ / &` — other punctuation (e.g. a colon or semicolon) is rejected with a 422.
+- `instant_validate` (Boolean) Ask Coolify to validate SSH connectivity right after creation. Defaults to `true`. Coolify dispatches this validation as an asynchronous background job — creation itself always succeeds immediately regardless of this flag, and `is_reachable`/`is_usable` will read back `false` right after `apply` even with a good key and IP; they only reflect the real state once the background check finishes, visible on a later `plan`/`refresh`. Set to `false` to skip queuing that background check entirely (e.g. for a server that isn't SSH-reachable yet).
 - `is_build_server` (Boolean) Use this server only for building images. Defaults to `false`.
 - `port` (Number) SSH port. Defaults to `22`.
 - `proxy_type` (String) Reverse proxy to run on the server: `traefik`, `caddy` or `none`.

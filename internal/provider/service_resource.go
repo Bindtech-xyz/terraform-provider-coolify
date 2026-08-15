@@ -114,8 +114,10 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Free-form description.",
-				Optional:            true,
+				MarkdownDescription: "Free-form description. Coolify only accepts letters (including " +
+					"Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' \" + = * @ / &` — other " +
+					"punctuation (e.g. a colon or semicolon) is rejected with a 422.",
+				Optional: true,
 			},
 			"instant_deploy": schema.BoolAttribute{
 				MarkdownDescription: "Start the service right after creation. Defaults to `false`.",

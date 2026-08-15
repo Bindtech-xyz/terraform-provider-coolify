@@ -61,8 +61,10 @@ func (r *environmentResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Required:            true,
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Free-form description.",
-				Optional:            true,
+				MarkdownDescription: "Free-form description. Coolify only accepts letters (including " +
+					"Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' \" + = * @ / &` — other " +
+					"punctuation (e.g. a colon or semicolon) is rejected with a 422.",
+				Optional: true,
 			},
 		},
 	}

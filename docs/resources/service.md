@@ -41,7 +41,7 @@ resource "coolify_service" "custom" {
 
 ### Optional
 
-- `description` (String) Free-form description.
+- `description` (String) Free-form description. Coolify only accepts letters (including Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' " + = * @ / &` — other punctuation (e.g. a colon or semicolon) is rejected with a 422.
 - `destination_uuid` (String) Destination UUID (required when the server has several).
 - `docker_compose_raw` (String) Base64-encoded docker-compose file for a custom service (use `base64encode(file(...))`).
 - `environment_name` (String) Environment name. Exactly one of `environment_name`/`environment_uuid`.

@@ -73,8 +73,10 @@ func (r *serverResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Required:            true,
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Free-form description.",
-				Optional:            true,
+				MarkdownDescription: "Free-form description. Coolify only accepts letters (including " +
+					"Unicode), numbers, whitespace, and `- _ . , ! ? ( ) ' \" + = * @ / &` — other " +
+					"punctuation (e.g. a colon or semicolon) is rejected with a 422.",
+				Optional: true,
 			},
 			"ip": schema.StringAttribute{
 				MarkdownDescription: "IP address or hostname Coolify uses to SSH into the machine.",
@@ -103,9 +105,14 @@ func (r *serverResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Default:             booldefault.StaticBool(false),
 			},
 			"instant_validate": schema.BoolAttribute{
-				MarkdownDescription: "Validate the SSH connection immediately on create. " +
-					"Defaults to `true` so a bad key or IP fails the apply instead of " +
-					"leaving a broken server behind.",
+				MarkdownDescription: "Ask Coolify to validate SSH connectivity right after creation. " +
+					"Defaults to `true`. Coolify dispatches this validation as an asynchronous " +
+					"background job — creation itself always succeeds immediately regardless of " +
+					"this flag, and `is_reachable`/`is_usable` will read back `false` right after " +
+					"`apply` even with a good key and IP; they only reflect the real state once " +
+					"the background check finishes, visible on a later `plan`/`refresh`. Set to " +
+					"`false` to skip queuing that background check entirely (e.g. for a server " +
+					"that isn't SSH-reachable yet).",
 				Optional: true,
 				Computed: true,
 				Default:  booldefault.StaticBool(true),
