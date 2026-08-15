@@ -241,10 +241,13 @@ func (p *coolifyProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewProjectResource,
 		NewEnvironmentResource,
 		NewTagResource,
+		NewResourceTagResource,
 		// Workloads.
 		NewApplicationResource,
 		NewDatabaseResource,
 		NewServiceResource,
+		NewApplicationDestinationResource,
+		NewApplicationPreviewResource,
 		// Configuration.
 		NewEnvVarResource,
 		NewSharedEnvVarResource,
@@ -259,10 +262,13 @@ func (p *coolifyProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewVolumeBackupResource,
 		NewEnvVarsBulkResource,
 		NewResourceActionResource,
+		NewDeploymentResource,
 		// Cloud provisioning.
 		NewCloudTokenResource,
 		NewCloudInitScriptResource,
 		NewCloudServerResource,
+		// Instance.
+		NewAPISettingsResource,
 	}
 }
 
