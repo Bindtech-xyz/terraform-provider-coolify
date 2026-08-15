@@ -30,9 +30,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # Pinned: an auto-resolved version can be built with an older Go than
-      # go.mod declares, which golangci-lint refuses to run against at all.
-      - uses: golangci/golangci-lint-action@v6
+      # Pinned: an auto-resolved golangci-lint version can be built with an
+      # older Go than go.mod declares, which it refuses to run against at
+      # all. v6 of this action cannot drive golangci-lint v2 at all (hard
+      # error, not a version-resolution quirk) — v7+ is required.
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
 
