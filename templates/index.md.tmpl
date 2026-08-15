@@ -64,6 +64,25 @@ Set the token as `COOLIFY_TOKEN`, never as a literal in `.tf` files — see
 {{- end }}
 {{- end }}
 
+## OpenTofu
+
+This provider isn't listed on `registry.opentofu.org` yet (only
+`registry.terraform.io`, where you're reading this). `tofu init` resolves an
+unqualified `source` against OpenTofu's own registry first, so qualify the
+hostname explicitly:
+
+```hcl
+required_providers {
+  coolify = {
+    source  = "registry.terraform.io/bindtech-xyz/coolify"
+    version = "~> 0.1"
+  }
+}
+```
+
+This works today under OpenTofu — signature verification and install both succeed
+against a real release, tested directly.
+
 ## Environment Variables
 
 Both connection attributes can be set outside configuration, which is the recommended

@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-15
+
+### Added
+
+- Documented (README and the registry overview page) how to use this provider under
+  OpenTofu today: it isn't listed on `registry.opentofu.org` yet, so `tofu init`
+  resolves an unqualified `source` against the wrong registry and fails. Qualifying
+  the hostname explicitly (`source = "registry.terraform.io/bindtech-xyz/coolify"`)
+  works right now — verified directly against a real release: signature
+  verification and install both succeed under `tofu init`.
+
+## [0.1.1] - 2026-08-15
+
+### Changed
+
+- Moved everything that had accumulated under `[Unreleased]` to a dated `[0.1.0]`
+  section, matching Keep a Changelog convention — the initial release had already
+  shipped, so leaving it all under `[Unreleased]` was stale.
+
 ## [0.1.0] - 2026-08-15
 
 ### Added
