@@ -93,8 +93,11 @@ func (r *databaseBackupResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Default:             booldefault.StaticBool(false),
 			},
 			"databases_to_backup": schema.StringAttribute{
-				MarkdownDescription: "Comma-separated logical database names to back up.",
-				Optional:            true,
+				MarkdownDescription: "Comma-separated logical database names to back up. Defaults to the " +
+					"database engine's own default logical database name (e.g. `postgres`) when unset.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"timeout": schema.Int64Attribute{
 				MarkdownDescription: "Backup timeout in seconds (60–36000).",

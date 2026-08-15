@@ -86,9 +86,15 @@ func (d *serverDomainsDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
-	state := serverDomainsDataSourceModel{ServerUUID: config.ServerUUID}
+	state := serverDomainsDataSourceModel{
+		ServerUUID: config.ServerUUID,
+		Domains:    make([]serverDomainEntryModel, 0, len(domains)),
+	}
 	for _, entry := range domains {
-		row := serverDomainEntryModel{IP: types.StringValue(entry.IP)}
+		row := serverDomainEntryModel{
+			IP:      types.StringValue(entry.IP),
+			Domains: make([]types.String, 0, len(entry.Domains)),
+		}
 		for _, domain := range entry.Domains {
 			row.Domains = append(row.Domains, types.StringValue(domain))
 		}
@@ -174,7 +180,10 @@ func (d *serverResourcesDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	state := serverResourcesDataSourceModel{ServerUUID: config.ServerUUID}
+	state := serverResourcesDataSourceModel{
+		ServerUUID: config.ServerUUID,
+		Resources:  make([]serverResourceEntryModel, 0, len(resources)),
+	}
 	for _, res := range resources {
 		state.Resources = append(state.Resources, serverResourceEntryModel{
 			UUID:   types.StringValue(res.UUID),

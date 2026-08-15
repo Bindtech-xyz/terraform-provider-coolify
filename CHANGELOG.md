@@ -129,3 +129,32 @@ released yet — everything below is `[Unreleased]`.
 - `coolify_notification_settings` was missing `ImportState` despite being a trivially
   importable per-channel singleton (`Read` already merges API state field-by-field
   regardless of prior values) — added, importing by channel name.
+- Nine list data sources (`coolify_tags`, `coolify_destinations`, `coolify_s3_storages`,
+  `coolify_teams`, `coolify_backup_executions`, `coolify_github_app_repositories`,
+  `coolify_cloud_catalog`, `coolify_server_domains` — both its outer list and each row's
+  nested `domains`, `coolify_server_resources`) initialized their list-typed model field
+  as a bare Go zero-value struct instead of `make([]T, 0, len(source))`. A Go nil slice
+  and an empty slice both marshal to an empty Terraform list only if the field was ever
+  initialized as a slice at all — the zero value of a slice field left untouched is
+  `nil`, which the framework instead marshals as Terraform `null`. Any API response with
+  zero items (a fresh instance, a team with no tags yet, ...) then produced `null`
+  instead of `[]`, and Terraform Core's `length()` — along with any real `for_each` or
+  `toset()` on the output — rejects `null` outright with "argument must not be null."
+  Found via a live comprehensive-sweep apply computing `length()` over every list data
+  source's output; confirmed fixed by re-running the same apply against a real instance
+  with zero tags/S3 storages at the time. `TestDataSourcesReturnEmptyListNotNull` locks
+  in the empty-array case for three of the nine against a real `httptest` server.
+- `coolify_database_backup.databases_to_backup`: the same "Optional-only, but Coolify
+  assigns a non-empty default" class as several fixes above — unset resolves to the
+  engine's own logical database name (e.g. `postgres`), never `""`. Found deploying a
+  real `postgresql` backup schedule end to end. Now `Optional`+`Computed` with
+  `UseStateForUnknown`.
+- `coolify_cloud_init_script.script`: Coolify strips a trailing newline from stored
+  script content server-side. `script` is `Required` (Required+Computed is not a valid
+  attribute combination), so the planned value is always known — any byte-for-byte
+  difference from what Create/Update returns is a hard "provider produced inconsistent
+  result" error, on essentially every script written with a trailing newline (i.e.
+  nearly all of them — that's how every editor and HCL heredoc writes files). Found
+  deploying a real cloud-init script end to end. Fixed by echoing the configured value
+  back into state on create/read/update instead of adopting the API's normalized value;
+  import (no prior config to echo) still adopts the API's value.

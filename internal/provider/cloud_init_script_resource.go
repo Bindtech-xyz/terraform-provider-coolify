@@ -149,10 +149,21 @@ func (r *cloudInitScriptResource) ImportState(ctx context.Context, req resource.
 	resource.ImportStatePassthroughID(ctx, path.Root("uuid"), req, resp)
 }
 
+// cloudInitScriptToModel echoes the configured script back into state rather
+// than adopting the API's value. Coolify normalizes stored script content
+// (observed: a trailing newline is stripped), and `script` is Required (not
+// Computed, since Required+Computed is not a valid combination) — so any
+// byte-for-byte difference between the known planned value and what Create
+// returns is a hard "provider produced inconsistent result" error. Since the
+// normalization is purely cosmetic, config is authoritative on every
+// create/read/update; only on import (where the prior model has no script
+// yet) is the API's value adopted.
 func cloudInitScriptToModel(s *client.CloudInitScript, prior cloudInitScriptResourceModel) cloudInitScriptResourceModel {
 	m := prior
 	m.UUID = types.StringValue(s.UUID)
 	m.Name = types.StringValue(s.Name)
-	m.Script = keepPriorIfHidden(s.Script, prior.Script)
+	if prior.Script.IsNull() || prior.Script.IsUnknown() {
+		m.Script = types.StringValue(s.Script)
+	}
 	return m
 }

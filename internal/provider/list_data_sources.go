@@ -158,7 +158,7 @@ func (d *tagsDataSource) Read(ctx context.Context, _ datasource.ReadRequest, res
 		resp.Diagnostics.AddError("Unable to list Coolify tags", err.Error())
 		return
 	}
-	state := tagsDataSourceModel{}
+	state := tagsDataSourceModel{Tags: make([]tagEntryModel, 0, len(tags))}
 	for _, t := range tags {
 		state.Tags = append(state.Tags, tagEntryModel{
 			UUID: types.StringValue(t.UUID),
@@ -247,7 +247,10 @@ func (d *destinationsDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	state := destinationsDataSourceModel{ServerUUID: config.ServerUUID}
+	state := destinationsDataSourceModel{
+		ServerUUID:   config.ServerUUID,
+		Destinations: make([]destinationEntryModel, 0, len(destinations)),
+	}
 	for _, dest := range destinations {
 		state.Destinations = append(state.Destinations, destinationEntryModel{
 			UUID:    types.StringValue(dest.UUID),
@@ -321,7 +324,7 @@ func (d *s3StoragesDataSource) Read(ctx context.Context, _ datasource.ReadReques
 		resp.Diagnostics.AddError("Unable to list Coolify S3 storages", err.Error())
 		return
 	}
-	state := s3StoragesDataSourceModel{}
+	state := s3StoragesDataSourceModel{S3Storages: make([]s3StorageEntryModel, 0, len(storages))}
 	for _, s := range storages {
 		state.S3Storages = append(state.S3Storages, s3StorageEntryModel{
 			UUID:     types.StringValue(s.UUID),
@@ -393,7 +396,7 @@ func (d *teamsDataSource) Read(ctx context.Context, _ datasource.ReadRequest, re
 		resp.Diagnostics.AddError("Unable to list Coolify teams", err.Error())
 		return
 	}
-	state := teamsDataSourceModel{}
+	state := teamsDataSourceModel{Teams: make([]teamEntryModel, 0, len(teams))}
 	for _, t := range teams {
 		state.Teams = append(state.Teams, teamEntryModel{
 			ID:          types.Int64Value(t.ID),

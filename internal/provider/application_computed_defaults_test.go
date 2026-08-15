@@ -72,3 +72,26 @@ func TestDatabaseLimitsAreComputed(t *testing.T) {
 		}
 	}
 }
+
+// TestDatabaseBackupDatabasesToBackupIsComputed locks in a regression found
+// by a real apply: databases_to_backup was Optional-only, but Coolify
+// defaults it to the engine's own logical database name (e.g. "postgres")
+// whenever left unset — the same "provider produced inconsistent result"
+// class as the two checks above, just on coolify_database_backup instead.
+func TestDatabaseBackupDatabasesToBackupIsComputed(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	(&databaseBackupResource{}).Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("Schema: %v", schemaResp.Diagnostics)
+	}
+
+	attr, ok := schemaResp.Schema.Attributes["databases_to_backup"]
+	if !ok {
+		t.Fatal("schema is missing \"databases_to_backup\"")
+	}
+	if !attr.IsComputed() {
+		t.Error("\"databases_to_backup\" must be Computed: Coolify defaults it to the engine's " +
+			"logical database name when unset, never \"\"")
+	}
+}

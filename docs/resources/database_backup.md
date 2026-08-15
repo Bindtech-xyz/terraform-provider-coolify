@@ -34,7 +34,7 @@ resource "coolify_database_backup" "nightly" {
 
 ### Optional
 
-- `databases_to_backup` (String) Comma-separated logical database names to back up.
+- `databases_to_backup` (String) Comma-separated logical database names to back up. Defaults to the database engine's own default logical database name (e.g. `postgres`) when unset.
 - `dump_all` (Boolean) Dump the whole instance instead of selected logical databases.
 - `enabled` (Boolean) Whether the schedule is active. Defaults to `true`.
 - `retention_amount_locally` (Number) Number of local backups to keep (0 = unlimited).

@@ -151,6 +151,7 @@ func (d *backupExecutionsDataSource) Read(ctx context.Context, req datasource.Re
 	state := backupExecutionsDataSourceModel{
 		DatabaseUUID: config.DatabaseUUID,
 		BackupUUID:   config.BackupUUID,
+		Executions:   make([]backupExecutionEntryModel, 0, len(executions)),
 	}
 	for _, e := range executions {
 		state.Executions = append(state.Executions, backupExecutionEntryModel{
@@ -241,7 +242,10 @@ func (d *githubRepositoriesDataSource) Read(ctx context.Context, req datasource.
 		return
 	}
 
-	state := githubRepositoriesDataSourceModel{GithubAppID: config.GithubAppID}
+	state := githubRepositoriesDataSourceModel{
+		GithubAppID:  config.GithubAppID,
+		Repositories: make([]githubRepositoryEntryModel, 0, len(repos)),
+	}
 	for _, repo := range repos {
 		state.Repositories = append(state.Repositories, githubRepositoryEntryModel{
 			ID:       types.Int64Value(repo.ID),
@@ -338,6 +342,8 @@ func (d *cloudCatalogDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	state := config
+	state.Items = make([]types.Map, 0, len(entries))
+	state.Names = make([]types.String, 0, len(entries))
 	for _, entry := range entries {
 		flat := map[string]string{}
 		for key, value := range entry {
