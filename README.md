@@ -17,6 +17,8 @@ not the lagging OpenAPI spec), on the
 | Projects | `coolify_project` | `coolify_project`, `coolify_projects` |
 | Environments | `coolify_environment` | `coolify_environments` |
 | Applications (5 modes: public git, deploy key, GitHub App, Dockerfile, registry image) | `coolify_application` | `coolify_applications` |
+| Application destinations (additional, multi-destination deploy) | `coolify_application_destination` | — |
+| Application PR previews (cleanup on destroy) | `coolify_application_preview` | — |
 | Databases (8 engines: postgresql, mysql, mariadb, mongodb, redis, keydb, dragonfly, clickhouse) | `coolify_database` | `coolify_databases` |
 | Services (one-click **and** raw docker-compose) | `coolify_service` | `coolify_services` |
 | Service catalog (**dynamic**, 300+ templates from the live CDN feed) | — | `coolify_service_templates` |
@@ -32,12 +34,12 @@ not the lagging OpenAPI spec), on the
 | GitHub / GitLab Apps (private repos CI/CD) | `coolify_github_app`, `coolify_gitlab_app` | `coolify_github_app_repositories` |
 | Cloud provisioning (Hetzner/DigitalOcean/Vultr) | `coolify_cloud_server`, `coolify_cloud_token`, `coolify_cloud_init_script` | `coolify_cloud_catalog` |
 | Start/stop/restart (declarative trigger) | `coolify_resource_action` | — |
-| Deployments | — | `coolify_deployments` |
-| Instance (health, version) | — | `coolify_instance` |
-| Tags | `coolify_tag` | `coolify_tags` |
+| Deployments (trigger by uuid or tag, optional wait-for-completion) | `coolify_deployment` | `coolify_deployments` |
+| Instance (health, version, API/MCP server toggles) | `coolify_api_settings` | `coolify_instance` |
+| Tags (team-wide) and resource tag attachment | `coolify_tag`, `coolify_resource_tag` | `coolify_tags` |
 | Teams | — | `coolify_team`, `coolify_teams` |
 
-**25 resources, 22 data sources.** Deletes of applications/databases/services/destinations
+**30 resources, 22 data sources.** Deletes of applications/databases/services/destinations
 poll until Coolify's asynchronous teardown actually finishes (backoff 500ms→5s), so
 destroy-then-recreate cycles never collide on names, domains or networks.
 

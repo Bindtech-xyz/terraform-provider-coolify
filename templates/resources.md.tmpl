@@ -3,9 +3,9 @@
 page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
 subcategory: "{{- if or (eq .Name "coolify_server") (eq .Name "coolify_private_key") (eq .Name "coolify_destination") (eq .Name "coolify_server_settings") -}}
   Infrastructure
-{{- else if or (eq .Name "coolify_project") (eq .Name "coolify_environment") (eq .Name "coolify_tag") -}}
+{{- else if or (eq .Name "coolify_project") (eq .Name "coolify_environment") (eq .Name "coolify_tag") (eq .Name "coolify_resource_tag") -}}
   Organization
-{{- else if or (eq .Name "coolify_application") (eq .Name "coolify_database") (eq .Name "coolify_service") -}}
+{{- else if or (eq .Name "coolify_application") (eq .Name "coolify_database") (eq .Name "coolify_service") (eq .Name "coolify_application_destination") (eq .Name "coolify_application_preview") -}}
   Workloads
 {{- else if or (eq .Name "coolify_environment_variable") (eq .Name "coolify_environment_variables") (eq .Name "coolify_shared_environment_variable") (eq .Name "coolify_storage") (eq .Name "coolify_volume_backup") (eq .Name "coolify_database_backup") (eq .Name "coolify_s3_storage") (eq .Name "coolify_scheduled_task") -}}
   Configuration & Backups
@@ -15,8 +15,10 @@ subcategory: "{{- if or (eq .Name "coolify_server") (eq .Name "coolify_private_k
   CI/CD Sources
 {{- else if or (eq .Name "coolify_cloud_token") (eq .Name "coolify_cloud_init_script") (eq .Name "coolify_cloud_server") -}}
   Cloud Provisioning
-{{- else if eq .Name "coolify_resource_action" -}}
+{{- else if or (eq .Name "coolify_resource_action") (eq .Name "coolify_deployment") -}}
   Operations
+{{- else if eq .Name "coolify_api_settings" -}}
+  Instance
 {{- end}}"
 description: |-
 {{ .Description | plainmarkdown | trimspace | prefixlines "  " }}

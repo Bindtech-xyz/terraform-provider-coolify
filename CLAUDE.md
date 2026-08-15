@@ -9,7 +9,7 @@ A Terraform provider for Coolify v4 (self-hostable PaaS), built on
 `github.com/Bindtech-xyz/terraform-provider-coolify`. Registry address baked into
 `main.go`: `registry.terraform.io/bindtech-xyz/coolify`.
 
-25 resources / 22 data sources — coverage tracks the Coolify docs sidebar (every
+30 resources / 22 data sources — coverage tracks the Coolify docs sidebar (every
 API-manageable concept) plus full feature parity with the community providers.
 Deliberate design choices (do not "fix" these):
 
@@ -51,6 +51,21 @@ Deliberate design choices (do not "fix" these):
   (re-runs via `triggers` map, RequiresReplace everywhere).
 - `coolify_environment_variables` (bulk map) vs `coolify_environment_variable`
   (unitary, per-flag): both valid, keys must not overlap on one parent.
+- `coolify_application_preview` has **no create API call at all** — Coolify creates
+  previews only from GitHub App PR webhook events, never directly. `Create` is
+  state-only (tracks `application_uuid`+`pull_request_id`); `Delete` is the only real
+  API interaction. Use it to guarantee cleanup, not to provision the preview.
+- `coolify_api_settings` (instance-wide REST API + MCP server toggles, root-team token
+  only) has no GET for either flag — same no-read-API constraint as
+  `coolify_volume_backup`/`coolify_server_settings`. `Delete` **unconditionally**
+  re-enables the API and disables MCP regardless of the resource's last configured
+  state — there is no other way back in once the API is off, so this refuses to leave
+  that footgun loaded. Never test `api_enabled = false` against a real instance you
+  still need API access to; the acceptance suite must not exercise it either.
+- `coolify_resource_tag` attaches a tag (creating it if needed) to an
+  application/database/service. `tag_name` is Required but never adopted from the API
+  into state — Coolify lowercases tag names server-side, so state always echoes config
+  instead (same reasoning as `coolify_cloud_init_script.script`).
 
 ## Commands
 
@@ -127,7 +142,16 @@ adding endpoints, grep the controller, not the spec. Error bodies are Laravel-st
 `{"message": ...}` plus `{"errors": {field: [msgs]}}` on 422; 429 carries Retry-After
 (honoured by the client's retry loop). Most create endpoints return only
 `{"uuid": ...}` (shared env vars return `{"id": ...}`; destinations return the full
-object).
+object). `POST /deploy` is a rare case where the *same endpoint* returns two different
+envelopes depending on which mutually-exclusive query param was used —
+`DeployController::by_uuids` wraps results in `{"deployments": [...]}` (per-entry
+`message`), `::by_tags` in `{"details": [...], "message": [...]}` (aggregate message,
+no per-entry one). `client.Deploy` decodes both into the same `[]DeployResult`; found
+live when the by-tag path silently returned zero results (no error) because only
+`"deployments"` was decoded. Tag names are also always lowercased server-side on
+attach (`coolify_resource_tag`) but matched *exactly* (case-sensitive) on deploy — both
+`findTag` and `deploymentResource.trigger` normalize to lowercase client-side to
+compensate; don't remove either normalization.
 
 ## CI / Releases
 

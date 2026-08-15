@@ -40,13 +40,50 @@ func TestDeployByTagAndUUID(t *testing.T) {
 	var got string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.String()
-		_, _ = w.Write([]byte(`{"deployments":[]}`))
+		_, _ = w.Write([]byte(`{"deployments":[{"message":"Deployment queued.","resource_uuid":"app1","deployment_uuid":"d1"}]}`))
 	}))
-	if err := c.Deploy(context.Background(), "app1,app2", "", true); err != nil {
+	results, err := c.Deploy(context.Background(), "app1,app2", "", true)
+	if err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
 	if want := "/api/v1/deploy?force=true&uuid=app1%2Capp2"; got != want {
 		t.Errorf("url = %q, want %q", got, want)
+	}
+	if len(results) != 1 || results[0].DeploymentUUID != "d1" {
+		t.Errorf("results = %+v, want one entry with deployment_uuid d1", results)
+	}
+}
+
+// TestDeployByTagUsesDetailsEnvelope locks in a regression found live:
+// deploying by tag returns {"details": [...], "message": [...]} instead of
+// the by-uuid path's {"deployments": [...]} — decoding only "deployments"
+// silently produced zero results for every by-tag deploy, no error at all.
+func TestDeployByTagUsesDetailsEnvelope(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"details":[{"resource_uuid":"app1","deployment_uuid":"d1"}],"message":["Application app1 deployment queued."]}`))
+	}))
+	results, err := c.Deploy(context.Background(), "", "production", false)
+	if err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+	if len(results) != 1 || results[0].DeploymentUUID != "d1" || results[0].ResourceUUID != "app1" {
+		t.Errorf("results = %+v, want one entry with resource_uuid app1, deployment_uuid d1", results)
+	}
+}
+
+func TestGetDeployment(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if want := "/api/v1/deployments/d1"; r.URL.Path != want {
+			t.Errorf("path = %q, want %q", r.URL.Path, want)
+		}
+		_, _ = w.Write([]byte(`{"deployment_uuid":"d1","status":"finished"}`))
+	}))
+	d, err := c.GetDeployment(context.Background(), "d1")
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if d.Status != "finished" {
+		t.Errorf("status = %q, want finished", d.Status)
 	}
 }
 

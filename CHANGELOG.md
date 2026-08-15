@@ -6,6 +6,67 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-15
+
+### Added
+
+- Five resources closing every real gap found comparing against
+  `coolify-terraform` (56 resources total there vs 25 here at the time — most of that
+  gap was deliberate consolidation already documented in this provider's design
+  choices, e.g. one `coolify_application`/`coolify_database` instead of one resource
+  per mode/engine, but five capabilities were genuinely missing, not just modeled
+  differently):
+  - `coolify_deployment` — triggers a deployment by `resource_uuid` or `tag`
+    (`POST /deploy`), with optional `wait_for_completion` that polls until the
+    deployment reaches `finished`/`failed`. The client already had a fully-built,
+    tested `Deploy` method with nothing calling it — dead code until now.
+  - `coolify_resource_tag` — attaches a tag to an application/database/service (the
+    existing `coolify_tag` only creates team-wide tags, never attaches them).
+  - `coolify_application_destination` — attaches an additional standalone Docker
+    destination to an application for multi-destination deployment.
+  - `coolify_application_preview` — tracks a PR preview deployment for cleanup on
+    destroy (Coolify has no create/read API for previews; they're created only from
+    GitHub App PR webhooks).
+  - `coolify_api_settings` — instance-wide REST API and MCP server enable/disable
+    (root-team token only).
+
+### Fixed
+
+- `coolify_deployment` crashed on every real create with "Value Conversion Error":
+  `results` (Computed-only `ListNestedAttribute`) is unknown in the plan on create
+  (no prior state to fall back to), and the framework cannot decode an unknown value
+  into a plain Go slice field. Fixed by typing `Results` as `types.List` (which can
+  represent unknown) instead of `[]deployResultModel`, and adding
+  `UseStateForUnknown` so a later `Update` (only reachable via
+  `wait_for_completion`/`timeout_seconds`, since every other attribute forces
+  replacement) doesn't hit the same problem.
+- `client.Deploy` silently returned zero results for every tag-based deploy — no
+  error, just nothing. `POST /deploy` returns genuinely different response envelopes
+  depending on which mutually-exclusive query param triggered it:
+  `DeployController::by_uuids` wraps results in `{"deployments": [...]}`, `::by_tags`
+  in `{"details": [...], "message": [...]}` instead. The client only decoded
+  `"deployments"`. Found live deploying `tf-sweep4-web` by tag and getting an empty
+  `results` back with no diagnostic at all.
+- Deploying by tag also 404'd outright before the envelope fix even mattered:
+  `POST /deploy?tag=...` matches the tag name *exactly* (case-sensitive) against
+  Coolify's stored value, which is always lowercased on attach
+  (`Tag::createOrFirst`/`normalizeTagNames` server-side). A `coolify_deployment.tag`
+  configured with any uppercase character (matching how the tag was originally typed
+  in `coolify_resource_tag.tag_name`) silently matched nothing. Both
+  `coolify_resource_tag`'s `findTag` (comparing) and `coolify_deployment`'s `trigger`
+  (before sending to `/deploy`) now normalize to lowercase client-side.
+
+Verified live: `coolify_resource_tag` (mixed-case tag name, confirming the
+normalization fix), `coolify_deployment` by uuid with `wait_for_completion = true`
+(a real deploy, polled to `finished`), `coolify_deployment` by tag (after both fixes
+above), `coolify_application_preview` (state-only create, clean destroy against a
+nonexistent preview), and `coolify_api_settings` (`mcp_enabled` toggle only —
+`api_enabled = false` was deliberately never tested against the real instance, since
+there would be no way back in except the UI).
+`coolify_application_destination` could not be verified live — the test instance has
+only one server, and attaching a second destination requires one on a different
+server than the primary.
+
 ## [0.1.2] - 2026-08-15
 
 ### Added
