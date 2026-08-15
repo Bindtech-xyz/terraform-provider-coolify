@@ -2,9 +2,18 @@
 version: "3"
 
 # Convenience wrapper around scripts/release.sh — `task bugs:...` so the
-# fix → commit → release loop never has to be remembered by hand. Doesn't
-# touch secrets/ (gitignored, machine-local, see CLAUDE.md); this Taskfile
-# is plain project tooling and is tracked in git on both remotes.
+# fix → commit → release loop never has to be remembered by hand. This
+# Taskfile itself is plain project tooling and is tracked in git on both
+# remotes; it does not touch secrets/ (gitignored, machine-local, see
+# CLAUDE.md) itself, but includes secrets/Taskfile.yml below so `task
+# secrets:...` still works for whoever has that directory locally (it
+# resolves to nothing on a fresh clone without secrets/ — expected).
+
+includes:
+  secrets:
+    taskfile: ./secrets/Taskfile.yml
+    dir: ./secrets
+    optional: true
 
 tasks:
   default:
