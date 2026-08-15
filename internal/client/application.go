@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 )
 
 // ApplicationType selects the Coolify create endpoint. The API models each
@@ -178,11 +179,19 @@ func (c *Client) UpdateApplication(ctx context.Context, uuid string, req Applica
 	return c.GetApplication(ctx, uuid)
 }
 
-// DeleteApplication removes an application. Nil flags keep the API defaults
-// (delete configurations, volumes, networks, and run docker cleanup).
+// DeleteApplication removes an application and waits until Coolify has
+// actually finished tearing it down (deletion is asynchronous server-side).
+// Nil flags keep the API defaults (delete configurations, volumes, networks,
+// and run docker cleanup).
 func (c *Client) DeleteApplication(ctx context.Context, uuid string, deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks *bool) error {
-	return c.deleteWithQuery(ctx, "/applications/"+url.PathEscape(uuid),
-		deletionQuery(deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks))
+	if err := c.deleteWithQuery(ctx, "/applications/"+url.PathEscape(uuid),
+		deletionQuery(deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks)); err != nil {
+		return err
+	}
+	return c.waitForDeletion(ctx, 2*time.Minute, func(ctx context.Context) error {
+		_, err := c.GetApplication(ctx, uuid)
+		return err
+	})
 }
 
 // StartApplication queues a deployment (equivalent to pressing Deploy).

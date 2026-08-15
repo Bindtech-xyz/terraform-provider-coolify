@@ -4,10 +4,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/d3nailabs/terraform-provider-coolify/internal/client"
 )
+
+// mapRequiresReplace forces replacement when a map attribute changes.
+func mapRequiresReplace() planmodifier.Map {
+	return mapplanmodifier.RequiresReplace()
+}
 
 // pathRoot is a tiny alias so provider.go reads without importing path directly.
 func pathRoot(name string) path.Path { return path.Root(name) }

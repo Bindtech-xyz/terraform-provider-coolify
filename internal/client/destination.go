@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"net/url"
+	"time"
 )
 
 // Destination is a Docker network on a server that resources deploy into.
@@ -85,7 +86,13 @@ func (c *Client) UpdateDestination(ctx context.Context, uuid string, req Destina
 }
 
 // DeleteDestination removes a destination; the API rejects deletion while
-// resources still use the network.
+// resources still use the network. Waits for the removal to be visible.
 func (c *Client) DeleteDestination(ctx context.Context, uuid string) error {
-	return c.delete(ctx, "/destinations/"+url.PathEscape(uuid))
+	if err := c.delete(ctx, "/destinations/"+url.PathEscape(uuid)); err != nil {
+		return err
+	}
+	return c.waitForDeletion(ctx, 30*time.Second, func(ctx context.Context) error {
+		_, err := c.GetDestination(ctx, uuid)
+		return err
+	})
 }

@@ -233,6 +233,37 @@ func (c *Client) deleteWithQuery(ctx context.Context, path string, query url.Val
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
+// waitForDeletion polls checkFn with exponential backoff (500ms → 5s, capped at
+// deadline) until it reports 404. Coolify deletes resources asynchronously:
+// the DELETE call only queues the removal, so a destroy immediately followed
+// by a re-create can collide on names, domains or networks still held by the
+// dying containers.
+func (c *Client) waitForDeletion(ctx context.Context, deadline time.Duration, checkFn func(context.Context) error) error {
+	waitCtx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+
+	delay := 500 * time.Millisecond
+	for {
+		// Still-present (nil error) and transient errors both re-check on the
+		// next tick; only a 404 means the teardown finished.
+		if err := checkFn(waitCtx); IsNotFound(err) {
+			return nil
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("resource still present after %s: deletion is queued but not finished", deadline)
+		case <-time.After(delay):
+		}
+		if delay < 5*time.Second {
+			delay *= 2
+			if delay > 5*time.Second {
+				delay = 5 * time.Second
+			}
+		}
+	}
+}
+
 // boolQuery renders the standard cleanup flags shared by the application,
 // database and service delete endpoints. Nil pointers keep the API defaults
 // (all true).

@@ -54,6 +54,18 @@ type serverCloudflareTunnelModel struct {
 	Enabled types.Bool `tfsdk:"enabled"`
 }
 
+type serverLogDrainsModel struct {
+	NewrelicEnabled    types.Bool   `tfsdk:"newrelic_enabled"`
+	NewrelicLicenseKey types.String `tfsdk:"newrelic_license_key"`
+	NewrelicBaseURI    types.String `tfsdk:"newrelic_base_uri"`
+	AxiomEnabled       types.Bool   `tfsdk:"axiom_enabled"`
+	AxiomAPIKey        types.String `tfsdk:"axiom_api_key"`
+	AxiomDatasetName   types.String `tfsdk:"axiom_dataset_name"`
+	CustomEnabled      types.Bool   `tfsdk:"custom_enabled"`
+	CustomConfig       types.String `tfsdk:"custom_config"`
+	CustomConfigParser types.String `tfsdk:"custom_config_parser"`
+}
+
 // serverSettingsResourceModel manages a server's singleton sub-settings
 // (proxy, automated docker cleanup, Sentinel monitoring, Cloudflare Tunnel).
 // Only the configured blocks are managed; the rest keep their values.
@@ -63,6 +75,7 @@ type serverSettingsResourceModel struct {
 	DockerCleanup    *serverDockerCleanupModel    `tfsdk:"docker_cleanup"`
 	Sentinel         *serverSentinelModel         `tfsdk:"sentinel"`
 	CloudflareTunnel *serverCloudflareTunnelModel `tfsdk:"cloudflare_tunnel"`
+	LogDrains        *serverLogDrainsModel        `tfsdk:"log_drains"`
 }
 
 func (r *serverSettingsResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -158,6 +171,51 @@ func (r *serverSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 					},
 				},
 			},
+			"log_drains": schema.SingleNestedAttribute{
+				MarkdownDescription: "Log drains (docs: knowledge-base/drain-logs): ship container " +
+					"logs to New Relic, Axiom or a custom FluentBit output.",
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"newrelic_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the New Relic drain.",
+						Optional:            true,
+					},
+					"newrelic_license_key": schema.StringAttribute{
+						MarkdownDescription: "New Relic license key.",
+						Optional:            true,
+						Sensitive:           true,
+					},
+					"newrelic_base_uri": schema.StringAttribute{
+						MarkdownDescription: "New Relic log endpoint.",
+						Optional:            true,
+					},
+					"axiom_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable the Axiom drain.",
+						Optional:            true,
+					},
+					"axiom_api_key": schema.StringAttribute{
+						MarkdownDescription: "Axiom API key.",
+						Optional:            true,
+						Sensitive:           true,
+					},
+					"axiom_dataset_name": schema.StringAttribute{
+						MarkdownDescription: "Axiom dataset.",
+						Optional:            true,
+					},
+					"custom_enabled": schema.BoolAttribute{
+						MarkdownDescription: "Enable a custom FluentBit output.",
+						Optional:            true,
+					},
+					"custom_config": schema.StringAttribute{
+						MarkdownDescription: "FluentBit OUTPUT configuration.",
+						Optional:            true,
+					},
+					"custom_config_parser": schema.StringAttribute{
+						MarkdownDescription: "FluentBit PARSER configuration.",
+						Optional:            true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -227,6 +285,23 @@ func (r *serverSettingsResource) apply(ctx context.Context, plan serverSettingsR
 			body := map[string]any{"is_cloudflare_tunnel": c.Enabled.ValueBool()}
 			if err := r.client.UpdateServerCloudflareTunnel(ctx, server, body); err != nil {
 				return fmt.Errorf("cloudflare_tunnel: %w", err)
+			}
+		}
+	}
+	if l := plan.LogDrains; l != nil {
+		body := map[string]any{}
+		setBool(body, "is_logdrain_newrelic_enabled", l.NewrelicEnabled)
+		setString(body, "logdrain_newrelic_license_key", l.NewrelicLicenseKey)
+		setString(body, "logdrain_newrelic_base_uri", l.NewrelicBaseURI)
+		setBool(body, "is_logdrain_axiom_enabled", l.AxiomEnabled)
+		setString(body, "logdrain_axiom_api_key", l.AxiomAPIKey)
+		setString(body, "logdrain_axiom_dataset_name", l.AxiomDatasetName)
+		setBool(body, "is_logdrain_custom_enabled", l.CustomEnabled)
+		setString(body, "logdrain_custom_config", l.CustomConfig)
+		setString(body, "logdrain_custom_config_parser", l.CustomConfigParser)
+		if len(body) > 0 {
+			if err := r.client.UpdateServerLogDrains(ctx, server, body); err != nil {
+				return fmt.Errorf("log_drains: %w", err)
 			}
 		}
 	}
@@ -302,6 +377,20 @@ func (r *serverSettingsResource) refresh(ctx context.Context, m serverSettingsRe
 			return m, err
 		}
 		c.Enabled = readBool(settings, "is_cloudflare_tunnel", c.Enabled)
+	}
+	if l := m.LogDrains; l != nil {
+		settings, err := r.client.GetServerLogDrains(ctx, server)
+		if err != nil {
+			return m, err
+		}
+		l.NewrelicEnabled = readBool(settings, "is_logdrain_newrelic_enabled", l.NewrelicEnabled)
+		l.NewrelicBaseURI = readString(settings, "logdrain_newrelic_base_uri", l.NewrelicBaseURI)
+		l.AxiomEnabled = readBool(settings, "is_logdrain_axiom_enabled", l.AxiomEnabled)
+		l.AxiomDatasetName = readString(settings, "logdrain_axiom_dataset_name", l.AxiomDatasetName)
+		l.CustomEnabled = readBool(settings, "is_logdrain_custom_enabled", l.CustomEnabled)
+		l.CustomConfig = readString(settings, "logdrain_custom_config", l.CustomConfig)
+		l.CustomConfigParser = readString(settings, "logdrain_custom_config_parser", l.CustomConfigParser)
+		// API keys are hidden without read:sensitive; keep configured values.
 	}
 	return m, nil
 }

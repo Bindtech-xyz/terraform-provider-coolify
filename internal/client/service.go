@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 )
 
 // Service mirrors the `Service` schema (one-click services and raw
@@ -94,10 +95,17 @@ func (c *Client) UpdateService(ctx context.Context, uuid string, req ServiceUpda
 	return c.GetService(ctx, uuid)
 }
 
-// DeleteService removes a service. Nil flags keep the API defaults (all true).
+// DeleteService removes a service and waits for the asynchronous teardown to
+// finish. Nil flags keep the API defaults (all true).
 func (c *Client) DeleteService(ctx context.Context, uuid string, deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks *bool) error {
-	return c.deleteWithQuery(ctx, "/services/"+url.PathEscape(uuid),
-		deletionQuery(deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks))
+	if err := c.deleteWithQuery(ctx, "/services/"+url.PathEscape(uuid),
+		deletionQuery(deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks)); err != nil {
+		return err
+	}
+	return c.waitForDeletion(ctx, 2*time.Minute, func(ctx context.Context) error {
+		_, err := c.GetService(ctx, uuid)
+		return err
+	})
 }
 
 // StartService starts the service stack.

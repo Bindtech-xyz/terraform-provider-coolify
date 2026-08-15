@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 )
 
 // DatabaseEngine selects the Coolify create endpoint for a standalone database.
@@ -183,10 +184,17 @@ func (c *Client) UpdateDatabase(ctx context.Context, uuid string, req DatabaseRe
 	return c.GetDatabase(ctx, uuid)
 }
 
-// DeleteDatabase removes a database. Nil flags keep the API defaults (all true).
+// DeleteDatabase removes a database and waits for the asynchronous teardown to
+// finish. Nil flags keep the API defaults (all true).
 func (c *Client) DeleteDatabase(ctx context.Context, uuid string, deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks *bool) error {
-	return c.deleteWithQuery(ctx, "/databases/"+url.PathEscape(uuid),
-		deletionQuery(deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks))
+	if err := c.deleteWithQuery(ctx, "/databases/"+url.PathEscape(uuid),
+		deletionQuery(deleteConfigurations, deleteVolumes, dockerCleanup, deleteConnectedNetworks)); err != nil {
+		return err
+	}
+	return c.waitForDeletion(ctx, 2*time.Minute, func(ctx context.Context) error {
+		_, err := c.GetDatabase(ctx, uuid)
+		return err
+	})
 }
 
 // StartDatabase starts the database container.

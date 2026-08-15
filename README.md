@@ -20,18 +20,26 @@ not the lagging OpenAPI spec), on the
 | Databases (8 engines: postgresql, mysql, mariadb, mongodb, redis, keydb, dragonfly, clickhouse) | `coolify_database` | `coolify_databases` |
 | Services (one-click **and** raw docker-compose) | `coolify_service` | `coolify_services` |
 | Service catalog (**dynamic**, 300+ templates from the live CDN feed) | — | `coolify_service_templates` |
-| Env vars (application/service/database) | `coolify_environment_variable` | — |
+| Env vars (unitary + **bulk**) | `coolify_environment_variable`, `coolify_environment_variables` | — |
 | Shared env vars (team/project/environment/server) | `coolify_shared_environment_variable` | — |
 | Persistent storage (volumes & file mounts) | `coolify_storage` | — |
+| Volume backups | `coolify_volume_backup` | — |
 | Scheduled tasks (cron) | `coolify_scheduled_task` | — |
-| Database backups (+ S3, retention) | `coolify_database_backup` | — |
-| S3 storages | `coolify_s3_storage` | — |
+| Database backups (+ S3, retention) | `coolify_database_backup` | `coolify_backup_executions` |
+| S3 storages | `coolify_s3_storage` | `coolify_s3_storages` |
 | Notifications (email/discord/slack/telegram/pushover/webhook) | `coolify_notification_settings` | — |
-| Server settings (proxy, docker cleanup, Sentinel, Cloudflare Tunnel) | `coolify_server_settings` | — |
-| GitHub Apps (private repos CI/CD) | `coolify_github_app` | — |
+| Server settings (proxy, docker cleanup, Sentinel, Cloudflare Tunnel, **log drains**) | `coolify_server_settings` | `coolify_server_domains`, `coolify_server_resources` |
+| GitHub / GitLab Apps (private repos CI/CD) | `coolify_github_app`, `coolify_gitlab_app` | `coolify_github_app_repositories` |
+| Cloud provisioning (Hetzner/DigitalOcean/Vultr) | `coolify_cloud_server`, `coolify_cloud_token`, `coolify_cloud_init_script` | `coolify_cloud_catalog` |
+| Start/stop/restart (declarative trigger) | `coolify_resource_action` | — |
 | Deployments | — | `coolify_deployments` |
-| Tags | `coolify_tag` | — |
-| Teams | — | `coolify_team` |
+| Instance (health, version) | — | `coolify_instance` |
+| Tags | `coolify_tag` | `coolify_tags` |
+| Teams | — | `coolify_team`, `coolify_teams` |
+
+**25 resources, 22 data sources.** Deletes of applications/databases/services/destinations
+poll until Coolify's asynchronous teardown actually finishes (backoff 500ms→5s), so
+destroy-then-recreate cycles never collide on names, domains or networks.
 
 Coverage tracks the [Coolify docs sidebar](https://coolify.io/docs) — every
 API-manageable concept in Applications, Databases, Services, Knowledge Base
@@ -144,10 +152,9 @@ TF_ACC=1 go test ./internal/provider/ -v -run TestAccProjectResource
    the registry picks the release up via webhook (first publication is manual in the
    registry UI: Publish → Provider).
 
-## Roadmap
+## Not covered (and why)
 
-GitLab Apps, server log-drains, volume backup schedules, preview deployments, and cloud
-VM provisioning (Hetzner/DigitalOcean/Vultr + cloud tokens + cloud-init scripts — these
-create real machines, deliberately left out for now). The client layer
-(`internal/client/`) already models the transport; each is an additive resource
-following the same pattern.
+Preview deployments have no list/read API (only a delete endpoint) so they cannot be
+managed declaratively; server transfer/claim endpoints are interactive workflows. Note
+that `coolify_cloud_server` destroy only deregisters the server from Coolify — the VM
+itself must be cleaned up at the provider.

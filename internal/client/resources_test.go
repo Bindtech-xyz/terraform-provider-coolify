@@ -31,6 +31,12 @@ func TestCreateDatabaseUsesEnginePath(t *testing.T) {
 func TestDeleteApplicationQueryFlags(t *testing.T) {
 	var gotQuery string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			// Post-delete polling: report the teardown as finished.
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"message":"Resource not found."}`))
+			return
+		}
 		gotQuery = r.URL.RawQuery
 		w.Write([]byte(`{"message":"deleted"}`))
 	}))

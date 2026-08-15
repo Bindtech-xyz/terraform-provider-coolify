@@ -9,8 +9,9 @@ A Terraform provider for Coolify v4 (self-hostable PaaS), built on
 `github.com/d3nailabs/terraform-provider-coolify`. Registry address baked into
 `main.go`: `registry.terraform.io/d3nailabs/coolify`.
 
-18 resources / 11 data sources — coverage tracks the Coolify docs sidebar (every
-API-manageable concept). Deliberate design choices (do not "fix" these):
+25 resources / 22 data sources — coverage tracks the Coolify docs sidebar (every
+API-manageable concept) plus full feature parity with the community providers.
+Deliberate design choices (do not "fix" these):
 
 - `coolify_application` is ONE resource covering the five API create endpoints
   (public git / deploy key / GitHub App / dockerfile / docker image). The mode is
@@ -34,8 +35,22 @@ API-manageable concept). Deliberate design choices (do not "fix" these):
   map[string]any bodies on purpose (Laravel fillable-driven field sets); the typed
   schema lives in the resource layer, and only configured fields are sent/refreshed so
   unmanaged settings never diff.
-- `coolify_github_app` is addressed by numeric id (not uuid) — the API has no
-  single-app GET, reads filter the list.
+- `coolify_github_app` / `coolify_gitlab_app` are addressed by numeric id (not uuid) —
+  the API has no single-app GET, reads filter the list.
+- Deletes of applications/databases/services/destinations call
+  `client.waitForDeletion` (poll until 404, backoff 500ms→5s) because Coolify tears
+  down asynchronously; without it, destroy-then-recreate collides on held
+  names/domains/networks. Client unit tests that exercise those deletes MUST answer
+  404 on the post-delete GET or they hang for the poll deadline.
+- `coolify_cloud_server` is ONE resource for the 3 VM providers (provider_name
+  discriminator, `cloudServerBody` resolves the image-field type difference:
+  Hetzner int id vs DigitalOcean string slug). Destroy only deregisters — the VM
+  survives at the provider (warning emitted).
+- `coolify_volume_backup` has NO read API (PUT upsert only): Read echoes state,
+  drift reconciles on apply. `coolify_resource_action` is fire-and-forget
+  (re-runs via `triggers` map, RequiresReplace everywhere).
+- `coolify_environment_variables` (bulk map) vs `coolify_environment_variable`
+  (unitary, per-flag): both valid, keys must not overlap on one parent.
 
 ## Commands
 

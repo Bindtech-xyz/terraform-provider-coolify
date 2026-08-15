@@ -117,6 +117,21 @@ func (c *Client) UpdateEnvVar(ctx context.Context, parent EnvVarParent, parentUU
 	return c.GetEnvVar(ctx, parent, parentUUID, uuid)
 }
 
+// UpdateEnvVarsBulk creates-or-updates a batch of variables in one call
+// (PATCH /{parent}/{uuid}/envs/bulk with {"data": [...]}) and returns the full
+// refreshed list.
+func (c *Client) UpdateEnvVarsBulk(ctx context.Context, parent EnvVarParent, parentUUID string, vars []EnvVarRequest) ([]EnvVar, error) {
+	base, err := envVarBase(parent, parentUUID)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]any{"data": vars}
+	if err := c.patch(ctx, base+"/bulk", body, nil); err != nil {
+		return nil, err
+	}
+	return c.ListEnvVars(ctx, parent, parentUUID)
+}
+
 // DeleteEnvVar removes a variable by UUID.
 func (c *Client) DeleteEnvVar(ctx context.Context, parent EnvVarParent, parentUUID, uuid string) error {
 	base, err := envVarBase(parent, parentUUID)

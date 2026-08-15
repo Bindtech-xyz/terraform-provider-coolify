@@ -40,6 +40,7 @@ resource "coolify_server_settings" "worker" {
 
 - `cloudflare_tunnel` (Attributes) Cloudflare Tunnel (not available on the localhost server). (see [below for nested schema](#nestedatt--cloudflare_tunnel))
 - `docker_cleanup` (Attributes) Automated Docker cleanup. (see [below for nested schema](#nestedatt--docker_cleanup))
+- `log_drains` (Attributes) Log drains (docs: knowledge-base/drain-logs): ship container logs to New Relic, Axiom or a custom FluentBit output. (see [below for nested schema](#nestedatt--log_drains))
 - `proxy` (Attributes) Reverse-proxy behaviour. (see [below for nested schema](#nestedatt--proxy))
 - `sentinel` (Attributes) Sentinel monitoring agent. (see [below for nested schema](#nestedatt--sentinel))
 
@@ -61,6 +62,22 @@ Optional:
 - `force_cleanup` (Boolean) Run cleanup on schedule regardless of the threshold.
 - `frequency` (String) Cron expression for the cleanup job.
 - `threshold` (Number) Disk-usage percentage (1–99) that triggers a cleanup.
+
+
+<a id="nestedatt--log_drains"></a>
+### Nested Schema for `log_drains`
+
+Optional:
+
+- `axiom_api_key` (String, Sensitive) Axiom API key.
+- `axiom_dataset_name` (String) Axiom dataset.
+- `axiom_enabled` (Boolean) Enable the Axiom drain.
+- `custom_config` (String) FluentBit OUTPUT configuration.
+- `custom_config_parser` (String) FluentBit PARSER configuration.
+- `custom_enabled` (Boolean) Enable a custom FluentBit output.
+- `newrelic_base_uri` (String) New Relic log endpoint.
+- `newrelic_enabled` (Boolean) Enable the New Relic drain.
+- `newrelic_license_key` (String, Sensitive) New Relic license key.
 
 
 <a id="nestedatt--proxy"></a>

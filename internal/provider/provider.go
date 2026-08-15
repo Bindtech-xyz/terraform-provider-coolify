@@ -211,6 +211,14 @@ func (p *coolifyProvider) Resources(_ context.Context) []func() resource.Resourc
 		NewNotificationSettingsResource,
 		NewServerSettingsResource,
 		NewGithubAppResource,
+		NewGitlabAppResource,
+		NewVolumeBackupResource,
+		NewEnvVarsBulkResource,
+		NewResourceActionResource,
+		// Cloud provisioning.
+		NewCloudTokenResource,
+		NewCloudInitScriptResource,
+		NewCloudServerResource,
 	}
 }
 
@@ -225,8 +233,19 @@ func (p *coolifyProvider) DataSources(_ context.Context) []func() datasource.Dat
 		NewServicesDataSource,
 		NewDatabasesDataSource,
 		NewTeamDataSource,
+		NewTeamsDataSource,
 		NewServiceTemplatesDataSource,
 		NewDeploymentsDataSource,
+		NewServerDataSource,
+		NewServerDomainsDataSource,
+		NewServerResourcesDataSource,
+		NewTagsDataSource,
+		NewDestinationsDataSource,
+		NewS3StoragesDataSource,
+		NewBackupExecutionsDataSource,
+		NewGithubRepositoriesDataSource,
+		NewInstanceDataSource,
+		NewCloudCatalogDataSource,
 	}
 }
 
