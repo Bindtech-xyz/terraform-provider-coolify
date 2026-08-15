@@ -43,3 +43,32 @@ func TestApplicationServerDefaultedAttributesAreComputed(t *testing.T) {
 		}
 	}
 }
+
+// TestDatabaseLimitsAreComputed is coolify_database's twin of the
+// application check above: limits_memory/limits_cpus default to "0"
+// (unlimited) whenever unset, never "" — the same class of bug, just never
+// surfaced as a crash here because the client didn't even read the fields
+// back from the API (so state simply kept the planned null, no divergence).
+// That silent gap — a configured limit applied once at create and never
+// verified again — is the actual defect; Computed is what makes drift on
+// these two attributes detectable at all.
+func TestDatabaseLimitsAreComputed(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	(&databaseResource{}).Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("Schema: %v", schemaResp.Diagnostics)
+	}
+
+	for _, name := range []string{"limits_memory", "limits_cpus"} {
+		attr, ok := schemaResp.Schema.Attributes[name]
+		if !ok {
+			t.Fatalf("schema is missing %q", name)
+		}
+		if !attr.IsComputed() {
+			t.Errorf("%q must be Computed: Coolify defaults it to \"0\" when unset, "+
+				"never \"\" — without Computed, a configured value is applied once and "+
+				"never read back, so drift on it goes undetected", name)
+		}
+	}
+}

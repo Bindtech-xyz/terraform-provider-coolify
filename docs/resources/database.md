@@ -53,8 +53,8 @@ output "database_url" {
 - `instant_deploy` (Boolean) Start the database right after creation. Defaults to `false`.
 - `is_public` (Boolean) Expose the database on a public port. Defaults to `false`.
 - `keydb_password` (String, Sensitive) KeyDB password (keydb engine).
-- `limits_cpus` (String) CPU limit (e.g. `0.5`).
-- `limits_memory` (String) Memory limit (e.g. `512m`).
+- `limits_cpus` (String) CPU limit (e.g. `0.5`). Coolify defaults unset to `0` (unlimited).
+- `limits_memory` (String) Memory limit (e.g. `512m`). Coolify defaults unset to `0` (unlimited).
 - `mariadb_database` (String) Initial database name (mariadb engine).
 - `mariadb_password` (String, Sensitive) MariaDB user password (mariadb engine).
 - `mariadb_root_password` (String, Sensitive) MariaDB root password (mariadb engine).

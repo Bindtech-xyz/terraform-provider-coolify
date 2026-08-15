@@ -8,14 +8,24 @@ import (
 
 // Storage is a persistent volume or file mount attached to an application,
 // service or database (docs: knowledge-base/persistent-storage).
+//
+// Coolify models "persistent" and "file" as two separate Eloquent models
+// (LocalPersistentVolume, LocalFileVolume) with no shared discriminator
+// column — there is no "type" field in the response to unmarshal, unlike the
+// request body, which does take one to select which endpoint behavior to
+// apply. Name is only a real column on LocalPersistentVolume (absent, so
+// always "", for file mounts). Content is LocalFileVolume's declared
+// `$hidden` and is therefore never present in any response, regardless of
+// the token's abilities. Provider code (see storageToModel) reads only UUID
+// and Name here — the rest is kept for completeness/future use, not because
+// it is currently trustworthy to adopt into state.
 type Storage struct {
 	ID        int64  `json:"id"`
 	UUID      string `json:"uuid"`
-	Type      string `json:"storage_type"` // persistent | file
-	Name      string `json:"name"`
+	Name      string `json:"name"` // persistent volumes only; "" for file mounts
 	MountPath string `json:"mount_path"`
 	HostPath  string `json:"host_path"`
-	Content   string `json:"content"`
+	Content   string `json:"content"` // always "": see doc comment above
 	FsPath    string `json:"fs_path"`
 }
 
@@ -44,16 +54,24 @@ func storageBase(parent EnvVarParent, parentUUID string) (string, error) {
 }
 
 // ListStorages returns the storages of a resource.
+// ListStorages returns the storages of a resource. The endpoint does not
+// return a flat array: persistent volumes and file mounts are Coolify's two
+// separate underlying models (see the Storage doc comment), so the response
+// is {"persistent_storages": [...], "file_storages": [...]} — this
+// concatenates both into one list.
 func (c *Client) ListStorages(ctx context.Context, parent EnvVarParent, parentUUID string) ([]Storage, error) {
 	base, err := storageBase(parent, parentUUID)
 	if err != nil {
 		return nil, err
 	}
-	var out []Storage
-	if err := c.get(ctx, base, &out); err != nil {
+	var wrapped struct {
+		Persistent []Storage `json:"persistent_storages"`
+		File       []Storage `json:"file_storages"`
+	}
+	if err := c.get(ctx, base, &wrapped); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return append(wrapped.Persistent, wrapped.File...), nil
 }
 
 // GetStorage returns one storage by UUID, via the list endpoint.

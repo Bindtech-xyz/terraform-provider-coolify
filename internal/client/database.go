@@ -41,6 +41,8 @@ type Database struct {
 	InternalDBURL string `json:"internal_db_url"`
 	ExternalDBURL string `json:"external_db_url"`
 	Status        string `json:"status"`
+	LimitsMemory  string `json:"limits_memory"`
+	LimitsCPUs    string `json:"limits_cpus"`
 
 	// PostgreSQL.
 	PostgresUser           string `json:"postgres_user"`

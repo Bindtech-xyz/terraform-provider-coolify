@@ -40,6 +40,7 @@ type storageResourceModel struct {
 	MountPath  types.String `tfsdk:"mount_path"`
 	HostPath   types.String `tfsdk:"host_path"`
 	Content    types.String `tfsdk:"content"`
+	VolumeName types.String `tfsdk:"volume_name"`
 }
 
 func (r *storageResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -76,8 +77,11 @@ func (r *storageResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Volume name (required for `persistent`, invalid for `file`).",
-				Optional:            true,
+				MarkdownDescription: "Volume name (required for `persistent`, invalid for `file`). " +
+					"Coolify prefixes it with the parent's UUID server-side (`<parent-uuid>-<name>`) " +
+					"— that real, effective name is exposed separately as `volume_name`; this " +
+					"attribute always reflects what you configured, unchanged.",
+				Optional: true,
 			},
 			"mount_path": schema.StringAttribute{
 				MarkdownDescription: "Path inside the container.",
@@ -88,8 +92,17 @@ func (r *storageResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:            true,
 			},
 			"content": schema.StringAttribute{
-				MarkdownDescription: "File content (`file` only).",
-				Optional:            true,
+				MarkdownDescription: "File content (`file` only). Write-only: Coolify's API never " +
+					"echoes this back (the underlying field is unconditionally hidden, independent " +
+					"of the token's `read:sensitive` ability), so this always reflects the last " +
+					"value you configured, not the live content on the server.",
+				Optional: true,
+			},
+			"volume_name": schema.StringAttribute{
+				MarkdownDescription: "The real Docker volume name Coolify assigns — `name` prefixed " +
+					"with the parent resource's UUID. Empty for `file` mounts, which have no " +
+					"underlying named volume.",
+				Computed: true,
 			},
 		},
 	}
@@ -215,16 +228,36 @@ func (r *storageResource) ImportState(ctx context.Context, req resource.ImportSt
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
+// storageToModel adopts ONLY uuid and volume_name from the API. Everything
+// else about this resource turns out to be unreliable to read back:
+//
+//   - type has no corresponding response field at all — Coolify models
+//     "persistent" and "file" storages as two entirely separate Eloquent
+//     models (LocalPersistentVolume, LocalFileVolume) with no shared
+//     discriminator column, not as one row with a type field. It is
+//     RequiresReplace anyway, so echoing the configured value is exact by
+//     construction.
+//   - name is echoed unchanged — the real, effective name Coolify assigns
+//     server-side (uuid-prefixed) is a DIFFERENT string, surfaced instead as
+//     volume_name.
+//   - content is unconditionally hidden server-side (LocalFileVolume's
+//     $hidden, independent of read:sensitive) — the API never returns it
+//     under any circumstance, so there is nothing to adopt.
+//   - mount_path and host_path are normalised server-side (trimmed, forced
+//     to start with "/") — adopting them risks the exact same
+//     planned-vs-final divergence already hit on name, for a cosmetic gain
+//     not worth that risk.
+//
+// Adopting any of these from the API produced "provider produced
+// inconsistent result" errors during a real deployment (name) or silently
+// wrong values (type always "", content always "").
 func storageToModel(s *client.Storage, prior storageResourceModel) storageResourceModel {
 	m := prior
 	m.UUID = types.StringValue(s.UUID)
-	m.Type = types.StringValue(s.Type)
-	m.MountPath = types.StringValue(s.MountPath)
-	m.Name = keepNullIfEmpty(s.Name, prior.Name)
-	m.HostPath = keepNullIfEmpty(s.HostPath, prior.HostPath)
-	m.Content = keepPriorIfHidden(s.Content, prior.Content)
-	if m.Content.IsUnknown() {
-		m.Content = types.StringNull()
+	if s.Name != "" {
+		m.VolumeName = types.StringValue(s.Name)
+	} else {
+		m.VolumeName = types.StringNull()
 	}
 	return m
 }

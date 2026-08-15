@@ -28,7 +28,7 @@ resource "coolify_private_key" "deploy" {
 
 ### Optional
 
-- `description` (String) Free-form description.
+- `description` (String) Free-form description. Coolify defaults unset to "Created by Coolify via API".
 - `name` (String) Name of the key. Coolify generates one when omitted.
 
 ### Read-Only

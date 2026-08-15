@@ -58,8 +58,11 @@ func (r *privateKeyResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Free-form description.",
-				Optional:            true,
+				MarkdownDescription: "Free-form description. Coolify defaults unset to " +
+					"\"Created by Coolify via API\".",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"private_key": schema.StringAttribute{
 				MarkdownDescription: "PEM private key material (or its base64 encoding).",
@@ -177,10 +180,8 @@ func privateKeyToModel(k *client.PrivateKey, prior privateKeyResourceModel) priv
 	if k.PrivateKey != "" && prior.PrivateKey.IsNull() {
 		m.PrivateKey = types.StringValue(k.PrivateKey)
 	}
-	if k.Description != "" || !prior.Description.IsNull() {
-		m.Description = types.StringValue(k.Description)
-	} else {
-		m.Description = types.StringNull()
-	}
+	// Computed (Coolify defaults unset to "Created by Coolify via API", never
+	// ""): adopt directly, no null-preservation — "" never legitimately occurs.
+	m.Description = types.StringValue(k.Description)
 	return m
 }

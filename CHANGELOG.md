@@ -66,6 +66,39 @@ released yet — everything below is `[Unreleased]`.
 
 ### Fixed
 
+- `coolify_database`: `limits_memory`/`limits_cpus` were write-only — the client's
+  `Database` struct didn't even parse them back from `GET`, so a configured limit was
+  applied once at create and never verified again (silent, undetectable drift). Added
+  the fields to the client struct, marked both `Optional`+`Computed` with
+  `UseStateForUnknown` (same fix as `coolify_application`'s limits). Verified against
+  a real `postgresql` database: configured `256m`/`0.5` round-trips exactly, confirmed
+  both in Terraform state and via a direct API call.
+- `coolify_private_key.description`: `Optional`-only, but Coolify defaults it to
+  `"Created by Coolify via API"` when unset (confirmed in the Laravel controller) —
+  the same "provider produced inconsistent result" crash as the `coolify_application`
+  fields above, on the very first create with no description set. A scan of every API
+  controller found this exact auto-fill pattern nowhere else. Now `Optional`+`Computed`.
+- `coolify_storage`: a deeper issue than a missing `Computed` flag — the resource's
+  entire response-mapping model was wrong. Coolify has no shared "storage" concept:
+  `persistent` and `file` mounts are two separate Eloquent models
+  (`LocalPersistentVolume`, `LocalFileVolume`) with no discriminator column, so
+  (a) `type` has **no corresponding field in any response** (the client's
+  `json:"storage_type"` tag decoded to `""` always, not "sometimes empty" — it was
+  simply wrong from the start), (b) `name` comes back **prefixed with the parent's
+  UUID** server-side (`<parent-uuid>-<name>`), not the configured value, and
+  (c) `content` is unconditionally `$hidden` in the Laravel model — the API never
+  returns it, independent of the token's `read:sensitive` ability. Adopting any of
+  these from the API produced a crash (`name`) or a silently wrong value (`type`
+  always `""`, `content` always `""` instead of preserving the configured value — a
+  latent bug in the existing null-preservation helper, exposed by the first real
+  create with `content` unset). Fixed by adopting **only** `uuid` from the API;
+  `type`/`name`/`content`/`mount_path`/`host_path` are now always echoed from
+  config/prior state, which is exact by construction (`type` is `RequiresReplace`
+  anyway). Added a new `volume_name` computed-only attribute exposing the real,
+  UUID-prefixed name Coolify assigns — genuinely useful information that was simply
+  going nowhere before. Separately, `GET .../storages` does not return a flat array
+  either: the response is `{"persistent_storages": [...], "file_storages": [...]}`,
+  which `ListStorages` now merges instead of failing to unmarshal outright.
 - `coolify_application`: seven attributes (`base_directory`, `limits_memory`,
   `limits_cpus`, `git_branch`, `git_commit_sha`, `build_pack`, `static_image`) were
   `Optional`-only, but Coolify assigns each a non-empty default whenever it is left

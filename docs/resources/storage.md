@@ -13,13 +13,18 @@ Persistent storage attached to an application, service or database (docs: knowle
 ## Example Usage
 
 ```terraform
-# Named volume.
+# Named volume. Coolify prefixes the volume name with the parent's UUID
+# server-side — the real, effective name is exposed as volume_name.
 resource "coolify_storage" "uploads" {
   parent_type = "application"
   parent_uuid = coolify_application.web.uuid
   type        = "persistent"
   name        = "uploads"
   mount_path  = "/app/uploads"
+}
+
+output "uploads_volume_name" {
+  value = coolify_storage.uploads.volume_name # e.g. "abc123-uploads"
 }
 
 # Inline config file mount.
@@ -44,13 +49,14 @@ resource "coolify_storage" "config" {
 
 ### Optional
 
-- `content` (String) File content (`file` only).
+- `content` (String) File content (`file` only). Write-only: Coolify's API never echoes this back (the underlying field is unconditionally hidden, independent of the token's `read:sensitive` ability), so this always reflects the last value you configured, not the live content on the server.
 - `host_path` (String) Host directory to bind-mount instead of a named volume (`persistent` only).
-- `name` (String) Volume name (required for `persistent`, invalid for `file`).
+- `name` (String) Volume name (required for `persistent`, invalid for `file`). Coolify prefixes it with the parent's UUID server-side (`<parent-uuid>-<name>`) — that real, effective name is exposed separately as `volume_name`; this attribute always reflects what you configured, unchanged.
 
 ### Read-Only
 
 - `uuid` (String) Server-assigned identifier.
+- `volume_name` (String) The real Docker volume name Coolify assigns — `name` prefixed with the parent resource's UUID. Empty for `file` mounts, which have no underlying named volume.
 
 ## Import
 

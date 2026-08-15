@@ -204,12 +204,18 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Default:             booldefault.StaticBool(false),
 			},
 			"limits_memory": schema.StringAttribute{
-				MarkdownDescription: "Memory limit (e.g. `512m`).",
-				Optional:            true,
+				MarkdownDescription: "Memory limit (e.g. `512m`). Coolify defaults unset to `0` " +
+					"(unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"limits_cpus": schema.StringAttribute{
-				MarkdownDescription: "CPU limit (e.g. `0.5`).",
-				Optional:            true,
+				MarkdownDescription: "CPU limit (e.g. `0.5`). Coolify defaults unset to `0` " +
+					"(unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 
 			// PostgreSQL.
@@ -454,6 +460,11 @@ func databaseToModel(d *client.Database, prior databaseResourceModel) databaseRe
 	m.Status = types.StringValue(d.Status)
 	m.InternalDBURL = types.StringValue(d.InternalDBURL)
 	m.ExternalDBURL = types.StringValue(d.ExternalDBURL)
+	// Computed (Coolify defaults unset to "0"/unlimited, never ""), same class
+	// of bug as coolify_application's limits: adopt directly, no
+	// null-preservation.
+	m.LimitsMemory = types.StringValue(d.LimitsMemory)
+	m.LimitsCPUs = types.StringValue(d.LimitsCPUs)
 	m.Description = keepNullIfEmpty(d.Description, prior.Description)
 	if d.PublicPort != nil {
 		m.PublicPort = types.Int64Value(*d.PublicPort)
