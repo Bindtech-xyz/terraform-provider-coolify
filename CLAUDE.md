@@ -140,16 +140,19 @@ in sync when editing CI logic, but **do not push `main` straight to `github`** �
 `github-mirror` branch is what actually gets pushed there, and it deliberately omits a
 few paths (see **GitHub mirror exclusions** below).
 
-`secrets/` and `Taskfile.yml` are gitignored (maintainer's personal acceptance-test
-tooling, depends on a machine-local SOPS/age config outside this repo) — they exist
-locally but were deliberately never meant to be tracked going forward.
+`secrets/` is gitignored (maintainer's personal acceptance-test tooling, depends on a
+machine-local SOPS/age config outside this repo) — exists locally, never tracked.
+`Taskfile.yml` is different: it no longer wraps `secrets/`, just `scripts/release.sh`,
+so it's plain project tooling and *is* tracked (both remotes).
 
 ### Cutting a release
 
-`scripts/release.sh vX.Y.Z` (or `make release VERSION=vX.Y.Z`) does the whole thing:
-gate (gofmt/vet/build/test) → push `main` to `origin` → sync `github-mirror` → push it
-to `github`'s `main` → tag both remotes → push both tags. Refuses to run from a dirty
-tree, off `main`, or over a tag that already exists on either remote.
+`task bugs:ship MSG="..." VERSION=vX.Y.Z` (fix the bug yourself first) — commits on
+`main`, then runs `scripts/release.sh vX.Y.Z`: gate (gofmt/vet/build/test) → push
+`main` to `origin` → sync `github-mirror` → push it to `github`'s `main` → tag both
+remotes → push both tags. Refuses to run from a dirty tree, off `main`, or over a tag
+that already exists on either remote. Full runbook, troubleshooting, and one-time
+setup notes: **`RELEASING.md`** (also excluded from `github-mirror` — see below).
 
 Tag `vX.Y.Z` → GitHub's release workflow runs GoReleaser (config in `.goreleaser.yml`):
 signs SHA256SUMS with the GPG key from repo secrets (`GPG_PRIVATE_KEY`, `PASSPHRASE`)
@@ -157,8 +160,8 @@ and attaches `terraform-registry-manifest.json` (protocol 6.0). Forgejo's own re
 workflow does the same against `GITEA_TOKEN` if that remote's tag is pushed too.
 Registry repo naming/tag conventions are load-bearing: repo must stay
 `terraform-provider-coolify`, tags semver with `v`. Once a version's GitHub release
-exists, `registry.terraform.io` picks it up automatically — no manual step after the
-first `Publish provider` link-up.
+exists, `registry.terraform.io` picks it up automatically (observed delay: ~15–30s) —
+no manual step after the first `Publish provider` link-up.
 
 ### GitHub mirror exclusions
 
@@ -170,6 +173,7 @@ minus `MIRROR_EXCLUDES` in `scripts/release.sh`, currently:
   workflows), and no secrets in it, just irrelevant CI config.
 - `CLAUDE.md` — internal maintainer/AI-agent guidance (this file), not something a
   public OSS consumer needs.
+- `RELEASING.md` — internal release runbook; same reasoning.
 
 To add another exclusion, add it to `MIRROR_EXCLUDES` in `scripts/release.sh` — the
 merge-conflict auto-resolution there already generalizes over the whole list. Manual
