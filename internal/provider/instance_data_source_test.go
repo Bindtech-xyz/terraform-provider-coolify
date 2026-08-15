@@ -35,9 +35,11 @@ func TestAccServiceTemplatesDataSource(t *testing.T) {
 			{
 				Config: `data "coolify_service_templates" "all" {}`,
 				ConfigStateChecks: []statecheck.StateCheck{
-					// The live catalog always contains plausible.
+					// Assert on gitea, one of the oldest entries of the live
+					// catalog (asserting on the full list would chase a moving
+					// target — the feed gains and loses entries with releases).
 					statecheck.ExpectKnownValue("data.coolify_service_templates.all",
-						tfjsonpath.New("templates").AtMapKey("plausible").AtMapKey("category"),
+						tfjsonpath.New("templates").AtMapKey("gitea").AtMapKey("category"),
 						knownvalue.NotNull()),
 				},
 			},

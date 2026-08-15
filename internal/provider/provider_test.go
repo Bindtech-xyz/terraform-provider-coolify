@@ -1,11 +1,13 @@
 package provider
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 // testAccProtoV6ProviderFactories instantiates the provider in-process for
@@ -23,5 +25,18 @@ func testAccPreCheck(t *testing.T) {
 	}
 	if os.Getenv("COOLIFY_TOKEN") == "" {
 		t.Fatal("COOLIFY_TOKEN must be set for acceptance tests")
+	}
+}
+
+// testAccImportByUUID feeds `terraform import` with the resource's uuid — the
+// testing framework defaults to the `id` attribute, which none of this
+// provider's resources have.
+func testAccImportByUUID(resourceName string) func(*terraform.State) (string, error) {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[resourceName]
+		if !ok {
+			return "", fmt.Errorf("resource %s not found in state", resourceName)
+		}
+		return rs.Primary.Attributes["uuid"], nil
 	}
 }

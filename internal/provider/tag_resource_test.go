@@ -26,6 +26,7 @@ func TestAccTagResource(t *testing.T) {
 			{
 				ResourceName:                         "coolify_tag.test",
 				ImportState:                          true,
+				ImportStateIdFunc:                    testAccImportByUUID("coolify_tag.test"),
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "uuid",
 			},

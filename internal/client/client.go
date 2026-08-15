@@ -146,6 +146,12 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 			if out == nil || len(bytes.TrimSpace(raw)) == 0 {
 				return nil
 			}
+			// A *string out takes the body verbatim: a few endpoints return
+			// plain text, not JSON (GET /version answers `4.3.2`).
+			if s, ok := out.(*string); ok {
+				*s = strings.TrimSpace(string(raw))
+				return nil
+			}
 			if err := json.Unmarshal(raw, out); err != nil {
 				return fmt.Errorf("%s %s: decoding response: %w (body: %s)", method, path, err, truncate(raw))
 			}

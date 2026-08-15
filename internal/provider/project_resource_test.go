@@ -35,6 +35,7 @@ func TestAccProjectResource(t *testing.T) {
 			{
 				ResourceName:                         "coolify_project.test",
 				ImportState:                          true,
+				ImportStateIdFunc:                    testAccImportByUUID("coolify_project.test"),
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "uuid",
 			},

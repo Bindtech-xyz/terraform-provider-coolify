@@ -47,13 +47,22 @@ func (c *Client) GetEnvironment(ctx context.Context, projectUUID, nameOrUUID str
 
 // CreateEnvironment creates an environment in a project. A duplicate name
 // yields HTTP 409.
+//
+// The create endpoint only accepts `name` — `description` is update-only
+// server-side (confirmed against the Laravel controller: create_environment's
+// $allowedFields is ['name'], update_environment's is ['name', 'description']).
+// A description is therefore applied with a follow-up PATCH.
 func (c *Client) CreateEnvironment(ctx context.Context, projectUUID string, req EnvironmentRequest) (*Environment, error) {
 	var created uuidResponse
-	if err := c.post(ctx, "/projects/"+url.PathEscape(projectUUID)+"/environments", req, &created); err != nil {
+	createBody := EnvironmentRequest{Name: req.Name}
+	if err := c.post(ctx, "/projects/"+url.PathEscape(projectUUID)+"/environments", createBody, &created); err != nil {
 		return nil, err
 	}
 	if created.UUID == "" {
 		return nil, fmt.Errorf("POST environments: API returned no uuid")
+	}
+	if req.Description != nil {
+		return c.UpdateEnvironment(ctx, projectUUID, created.UUID, EnvironmentRequest{Description: req.Description})
 	}
 	return c.GetEnvironment(ctx, projectUUID, created.UUID)
 }
