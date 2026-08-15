@@ -65,6 +65,22 @@ provider "coolify" {
 }
 ```
 
+**OpenTofu**: this provider isn't listed on `registry.opentofu.org` yet (only
+`registry.terraform.io`). `tofu init` resolves an unqualified `source` against
+OpenTofu's own registry first, so qualify the hostname explicitly:
+
+```hcl
+required_providers {
+  coolify = {
+    source  = "registry.terraform.io/bindtech-xyz/coolify"
+    version = "~> 0.1"
+  }
+}
+```
+
+This works today — signature verification and install both succeed under `tofu init`,
+tested directly against a real release.
+
 Full stack in one apply — project, environment, database, app wired together:
 
 ```hcl
