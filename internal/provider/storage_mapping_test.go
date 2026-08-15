@@ -5,7 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/d3nailabs/terraform-provider-coolify/internal/client"
+	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/client"
 )
 
 // TestStorageToModelEchoesConfigNotAPI locks in a regression found by a real

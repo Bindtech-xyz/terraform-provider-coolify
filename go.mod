@@ -1,4 +1,4 @@
-module github.com/d3nailabs/terraform-provider-coolify
+module github.com/Bindtech-xyz/terraform-provider-coolify
 
 go 1.25.8
 

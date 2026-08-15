@@ -63,7 +63,7 @@ Set the token as `COOLIFY_TOKEN`, never as a literal in `.tf` files — see
 terraform {
   required_providers {
     coolify = {
-      source  = "d3nailabs/coolify"
+      source  = "bindtech-xyz/coolify"
       version = "~> 0.1"
     }
   }

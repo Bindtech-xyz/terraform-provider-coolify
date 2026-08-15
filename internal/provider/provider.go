@@ -25,7 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/d3nailabs/terraform-provider-coolify/internal/client"
+	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/client"
 )
 
 // Environment variables honoured when the corresponding attribute is not set in

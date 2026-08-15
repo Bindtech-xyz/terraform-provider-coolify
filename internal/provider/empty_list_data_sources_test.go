@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
-	"github.com/d3nailabs/terraform-provider-coolify/internal/client"
+	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/client"
 )
 
 // TestDataSourcesReturnEmptyListNotNull locks in a regression found by a real

@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     coolify = {
-      source  = "d3nailabs/coolify"
+      source  = "bindtech-xyz/coolify"
       version = "~> 0.1"
     }
   }

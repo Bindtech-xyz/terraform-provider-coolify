@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Terraform provider for Coolify v4 (self-hostable PaaS), built on
 `terraform-plugin-framework` v1 (protocol v6 only — no SDKv2, no muxing). Module path:
-`github.com/d3nailabs/terraform-provider-coolify`. Registry address baked into
-`main.go`: `registry.terraform.io/d3nailabs/coolify`.
+`github.com/Bindtech-xyz/terraform-provider-coolify`. Registry address baked into
+`main.go`: `registry.terraform.io/bindtech-xyz/coolify`.
 
 25 resources / 22 data sources — coverage tracks the Coolify docs sidebar (every
 API-manageable concept) plus full feature parity with the community providers.

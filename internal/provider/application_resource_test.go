@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 
-	"github.com/d3nailabs/terraform-provider-coolify/internal/client"
+	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/client"
 )
 
 // TestAccApplicationResource deploys a real container end to end: create,

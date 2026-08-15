@@ -17,7 +17,7 @@ released yet — everything below is `[Unreleased]`.
   (e.g. an edge-auth resource's attributes not yet applied) produce an explicit
   "provider block cannot depend on a same-apply resource" diagnostic instead of an
   opaque connectivity failure. See the
-  [Reaching Coolify Behind an Authenticating Edge](https://registry.terraform.io/providers/d3nailabs/coolify/latest/docs/guides/reverse-proxy-authentication)
+  [Reaching Coolify Behind an Authenticating Edge](https://registry.terraform.io/providers/bindtech-xyz/coolify/latest/docs/guides/reverse-proxy-authentication)
   guide.
 - Initial provider: 25 resources and 22 data sources on `terraform-plugin-framework`
   v1 (protocol v6), covering the full [Coolify documentation](https://coolify.io/docs)
@@ -46,13 +46,13 @@ released yet — everything below is `[Unreleased]`.
   ability: generated database credentials, private key material, S3 keys and env-var
   values keep their last-known state value instead of being overwritten by the empty
   string Coolify's API returns when that ability is absent — see the
-  [Token Abilities & Sensitive Data](https://registry.terraform.io/providers/d3nailabs/coolify/latest/docs/guides/authentication-and-token-abilities)
+  [Token Abilities & Sensitive Data](https://registry.terraform.io/providers/bindtech-xyz/coolify/latest/docs/guides/authentication-and-token-abilities)
   guide.
 - Composite import support for every resource whose identity spans more than one
   coordinate (`coolify_environment`, `coolify_storage`, `coolify_scheduled_task`,
   `coolify_database_backup`, `coolify_volume_backup`, `coolify_shared_environment_variable`,
   and `coolify_database`'s `<engine>/<uuid>` form) — documented end to end in the
-  [Importing Existing Infrastructure](https://registry.terraform.io/providers/d3nailabs/coolify/latest/docs/guides/importing-existing-infrastructure)
+  [Importing Existing Infrastructure](https://registry.terraform.io/providers/bindtech-xyz/coolify/latest/docs/guides/importing-existing-infrastructure)
   guide.
 - `coolify_resource_action` for declarative start/stop/restart triggered by a
   `triggers` map, and `coolify_environment_variables` for bulk-managing a whole set of

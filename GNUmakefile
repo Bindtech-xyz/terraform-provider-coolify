@@ -4,7 +4,7 @@
 #   # ~/.terraformrc
 #   provider_installation {
 #     dev_overrides {
-#       "d3nailabs/coolify" = "<your GOBIN, e.g. ~/go/bin>"
+#       "bindtech-xyz/coolify" = "<your GOBIN, e.g. ~/go/bin>"
 #     }
 #     direct {}
 #   }

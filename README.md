@@ -53,7 +53,7 @@ the gaps left by the existing community providers.
 terraform {
   required_providers {
     coolify = {
-      source  = "d3nailabs/coolify"
+      source  = "bindtech-xyz/coolify"
       version = "~> 0.1"
     }
   }
@@ -127,7 +127,7 @@ No local registry, no version bumps, no lock-file fights — put this in `~/.ter
 ```hcl
 provider_installation {
   dev_overrides {
-    "d3nailabs/coolify" = "/home/<you>/go/bin"
+    "bindtech-xyz/coolify" = "/home/<you>/go/bin"
   }
   direct {}
 }
@@ -151,7 +151,7 @@ single destination) and is skipped, not failed, when that variable is unset — 
 environments running the rest of the suite have no deployable server available.
 
 If the instance sits behind an authenticating edge (see the
-[Reaching Coolify Behind an Authenticating Edge](https://registry.terraform.io/providers/d3nailabs/coolify/latest/docs/guides/reverse-proxy-authentication)
+[Reaching Coolify Behind an Authenticating Edge](https://registry.terraform.io/providers/bindtech-xyz/coolify/latest/docs/guides/reverse-proxy-authentication)
 guide), also set `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` (or the equivalent for
 your edge layer) — every acceptance test's `Config` prepends a `provider "coolify" {}`
 block carrying them as `headers` when both are set.

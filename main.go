@@ -10,7 +10,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/d3nailabs/terraform-provider-coolify/internal/provider"
+	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/provider"
 )
 
 // These are set at build time by GoReleaser via -ldflags.
@@ -27,7 +27,7 @@ func main() {
 	opts := providerserver.ServeOpts{
 		// Must match the Terraform Registry address, otherwise `terraform init`
 		// will not be able to match the binary to the `required_providers` entry.
-		Address: "registry.terraform.io/d3nailabs/coolify",
+		Address: "registry.terraform.io/bindtech-xyz/coolify",
 		Debug:   debug,
 	}
 
