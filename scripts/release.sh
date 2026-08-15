@@ -13,7 +13,7 @@ set -euo pipefail
 # Paths that live on main (Forgejo) but are deliberately absent from the
 # github-mirror branch pushed to GitHub. Keep in sync with the "GitHub
 # mirror exclusions" note in CLAUDE.md.
-MIRROR_EXCLUDES=(.forgejo CLAUDE.md)
+MIRROR_EXCLUDES=(.forgejo CLAUDE.md RELEASING.md)
 
 VERSION="${1:-}"
 if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
