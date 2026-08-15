@@ -62,6 +62,12 @@ Deliberate design choices (do not "fix" these):
   state — there is no other way back in once the API is off, so this refuses to leave
   that footgun loaded. Never test `api_enabled = false` against a real instance you
   still need API access to; the acceptance suite must not exercise it either.
+  `allowed_ips` (the instance IP allowlist — a separate gate from both Cloudflare
+  Access and the bearer token, see the live-testing protocol note in this file's
+  history) is **deliberately not on this resource, and can't be**: it has no REST API
+  route at all, only the Livewire settings UI (`app/Livewire/Settings/Advanced.php`,
+  confirmed by grepping `routes/api.php`). Don't add it here; there is no endpoint to
+  call.
 - `coolify_resource_tag` attaches a tag (creating it if needed) to an
   application/database/service. `tag_name` is Required but never adopted from the API
   into state — Coolify lowercases tag names server-side, so state always echoes config
