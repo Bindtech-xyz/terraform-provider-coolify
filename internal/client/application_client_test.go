@@ -21,10 +21,10 @@ func TestCreateApplicationSelectsEndpointPerType(t *testing.T) {
 			if r.Method == http.MethodPost {
 				gotPath = r.URL.Path
 				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte(`{"uuid":"app1"}`))
+				_, _ = w.Write([]byte(`{"uuid":"app1"}`))
 				return
 			}
-			w.Write([]byte(`{"uuid":"app1","name":"web"}`))
+			_, _ = w.Write([]byte(`{"uuid":"app1","name":"web"}`))
 		}))
 		if _, err := c.CreateApplication(context.Background(), appType, ApplicationRequest{}); err != nil {
 			t.Fatalf("CreateApplication(%s): %v", appType, err)
@@ -48,10 +48,10 @@ func TestApplicationRequestOmitsUnsetFields(t *testing.T) {
 		if r.Method == http.MethodPost {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"app1"}`))
+			_, _ = w.Write([]byte(`{"uuid":"app1"}`))
 			return
 		}
-		w.Write([]byte(`{"uuid":"app1"}`))
+		_, _ = w.Write([]byte(`{"uuid":"app1"}`))
 	}))
 
 	repo := "https://github.com/acme/api"
@@ -69,7 +69,7 @@ func TestApplicationLifecycleActions(t *testing.T) {
 	var paths []string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
-		w.Write([]byte(`{"message":"ok"}`))
+		_, _ = w.Write([]byte(`{"message":"ok"}`))
 	}))
 	ctx := context.Background()
 	_ = c.StartApplication(ctx, "a")

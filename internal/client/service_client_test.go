@@ -13,10 +13,10 @@ func TestCreateServiceOneClick(t *testing.T) {
 		if r.Method == http.MethodPost {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"svc1","domains":["https://x.example.com"]}`))
+			_, _ = w.Write([]byte(`{"uuid":"svc1","domains":["https://x.example.com"]}`))
 			return
 		}
-		w.Write([]byte(`{"uuid":"svc1","name":"plausible","service_type":"plausible"}`))
+		_, _ = w.Write([]byte(`{"uuid":"svc1","name":"plausible","service_type":"plausible"}`))
 	}))
 
 	typ := "plausible"
@@ -39,14 +39,14 @@ func TestServiceDeleteWaitsForTeardown(t *testing.T) {
 			gets++
 			if gets < 2 {
 				// Still tearing down on the first poll.
-				w.Write([]byte(`{"uuid":"svc1","status":"exited"}`))
+				_, _ = w.Write([]byte(`{"uuid":"svc1","status":"exited"}`))
 				return
 			}
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"message":"Resource not found."}`))
+			_, _ = w.Write([]byte(`{"message":"Resource not found."}`))
 			return
 		}
-		w.Write([]byte(`{"message":"queued"}`))
+		_, _ = w.Write([]byte(`{"message":"queued"}`))
 	}))
 
 	if err := c.DeleteService(context.Background(), "svc1", nil, nil, nil, nil); err != nil {

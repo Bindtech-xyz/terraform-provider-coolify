@@ -15,10 +15,10 @@ func TestUpdateEnvVarsBulkWrapsData(t *testing.T) {
 				t.Errorf("path = %s", r.URL.Path)
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			w.Write([]byte(`{}`))
+			_, _ = w.Write([]byte(`{}`))
 			return
 		}
-		w.Write([]byte(`[{"uuid":"e1","key":"FOO","value":"bar"}]`))
+		_, _ = w.Write([]byte(`[{"uuid":"e1","key":"FOO","value":"bar"}]`))
 	}))
 
 	key, value := "FOO", "bar"
@@ -40,7 +40,7 @@ func TestDeployByTagAndUUID(t *testing.T) {
 	var got string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.String()
-		w.Write([]byte(`{"deployments":[]}`))
+		_, _ = w.Write([]byte(`{"deployments":[]}`))
 	}))
 	if err := c.Deploy(context.Background(), "app1,app2", "", true); err != nil {
 		t.Fatalf("Deploy: %v", err)
@@ -52,7 +52,7 @@ func TestDeployByTagAndUUID(t *testing.T) {
 
 func TestListApplicationDeploymentsWrapped(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"deployments":[{"deployment_uuid":"d1","status":"finished"}]}`))
+		_, _ = w.Write([]byte(`{"deployments":[{"deployment_uuid":"d1","status":"finished"}]}`))
 	}))
 	deployments, err := c.ListApplicationDeployments(context.Background(), "app1")
 	if err != nil {
@@ -65,7 +65,7 @@ func TestListApplicationDeploymentsWrapped(t *testing.T) {
 
 func TestBackupExecutionsWrapped(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"executions":[{"uuid":"x1","status":"success","size":1024}]}`))
+		_, _ = w.Write([]byte(`{"executions":[{"uuid":"x1","status":"success","size":1024}]}`))
 	}))
 	execs, err := c.ListBackupExecutions(context.Background(), "db1", "bk1")
 	if err != nil {
@@ -80,11 +80,11 @@ func TestServerReads(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/servers/s1/domains":
-			w.Write([]byte(`[{"ip":"1.2.3.4","domains":["a.example.com","b.example.com"]}]`))
+			_, _ = w.Write([]byte(`[{"ip":"1.2.3.4","domains":["a.example.com","b.example.com"]}]`))
 		case "/api/v1/servers/s1/resources":
-			w.Write([]byte(`[{"uuid":"r1","name":"api","type":"application","status":"running"}]`))
+			_, _ = w.Write([]byte(`[{"uuid":"r1","name":"api","type":"application","status":"running"}]`))
 		case "/api/v1/health":
-			w.Write([]byte(`OK`))
+			_, _ = w.Write([]byte(`OK`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

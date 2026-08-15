@@ -16,7 +16,7 @@ import (
 func TestCreateStorageReturnsFullObject(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"uuid":"st1","name":"app1-uploads","mount_path":"/app/uploads"}`))
+		_, _ = w.Write([]byte(`{"uuid":"st1","name":"app1-uploads","mount_path":"/app/uploads"}`))
 	}))
 	typ, mount := "persistent", "/app/uploads"
 	s, err := c.CreateStorage(context.Background(), EnvVarParentApplication, "app1", StorageRequest{Type: &typ, MountPath: &mount})
@@ -36,9 +36,9 @@ func TestUpdateStorageSendsUUIDInBody(t *testing.T) {
 		case http.MethodPatch:
 			patchPath = r.URL.Path
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			w.Write([]byte(`{}`))
+			_, _ = w.Write([]byte(`{}`))
 		default:
-			w.Write([]byte(`{"persistent_storages":[{"uuid":"st1","mount_path":"/etc/cfg"}],"file_storages":[]}`))
+			_, _ = w.Write([]byte(`{"persistent_storages":[{"uuid":"st1","mount_path":"/etc/cfg"}],"file_storages":[]}`))
 		}
 	}))
 
@@ -63,7 +63,7 @@ func TestUpdateStorageSendsUUIDInBody(t *testing.T) {
 // []client.Storage") on every real Coolify instance.
 func TestListStoragesMergesPersistentAndFile(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"persistent_storages": [{"uuid":"p1","name":"app1-data","mount_path":"/data"}],
 			"file_storages": [{"uuid":"f1","mount_path":"/etc/app.conf","fs_path":"./app.conf"}]
 		}`))

@@ -14,9 +14,9 @@ func TestCreateDatabaseUsesEnginePath(t *testing.T) {
 		case http.MethodPost:
 			gotPath = r.URL.Path
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"db1","internal_db_url":"postgres://..."}`))
+			_, _ = w.Write([]byte(`{"uuid":"db1","internal_db_url":"postgres://..."}`))
 		default:
-			w.Write([]byte(`{"uuid":"db1","name":"pg","image":"postgres:16"}`))
+			_, _ = w.Write([]byte(`{"uuid":"db1","name":"pg","image":"postgres:16"}`))
 		}
 	}))
 
@@ -34,11 +34,11 @@ func TestDeleteApplicationQueryFlags(t *testing.T) {
 		if r.Method == http.MethodGet {
 			// Post-delete polling: report the teardown as finished.
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"message":"Resource not found."}`))
+			_, _ = w.Write([]byte(`{"message":"Resource not found."}`))
 			return
 		}
 		gotQuery = r.URL.RawQuery
-		w.Write([]byte(`{"message":"deleted"}`))
+		_, _ = w.Write([]byte(`{"message":"deleted"}`))
 	}))
 
 	f := false
@@ -54,12 +54,12 @@ func TestEnvVarLifecyclePaths(t *testing.T) {
 	var paths []string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.Method+" "+r.URL.Path)
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"env1"}`))
+			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
 		default:
-			w.Write([]byte(`[{"uuid":"env1","key":"FOO","value":"bar"}]`))
+			_, _ = w.Write([]byte(`[{"uuid":"env1","key":"FOO","value":"bar"}]`))
 		}
 	}))
 
@@ -127,10 +127,10 @@ func TestUpdateEnvironmentReadsBackByNewName(t *testing.T) {
 			gets = append(gets, r.URL.Path)
 		}
 		if strings.Contains(r.URL.Path, "/environments/") && r.Method == http.MethodPatch {
-			w.Write([]byte(`{}`))
+			_, _ = w.Write([]byte(`{}`))
 			return
 		}
-		w.Write([]byte(`{"uuid":"e1","name":"staging2"}`))
+		_, _ = w.Write([]byte(`{"uuid":"e1","name":"staging2"}`))
 	}))
 
 	name := "staging2"

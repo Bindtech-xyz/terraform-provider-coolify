@@ -12,10 +12,10 @@ func TestCreateEnvironmentReadsDetailsEndpoint(t *testing.T) {
 		paths = append(paths, r.Method+" "+r.URL.Path)
 		if r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"env1"}`))
+			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
 			return
 		}
-		w.Write([]byte(`{"uuid":"env1","name":"staging"}`))
+		_, _ = w.Write([]byte(`{"uuid":"env1","name":"staging"}`))
 	}))
 
 	name := "staging"
@@ -36,7 +36,7 @@ func TestDeleteEnvironmentPath(t *testing.T) {
 	var gotPath string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		w.Write([]byte(`{"message":"deleted"}`))
+		_, _ = w.Write([]byte(`{"message":"deleted"}`))
 	}))
 	if err := c.DeleteEnvironment(context.Background(), "proj1", "staging"); err != nil {
 		t.Fatalf("DeleteEnvironment: %v", err)
@@ -49,7 +49,7 @@ func TestDeleteEnvironmentPath(t *testing.T) {
 func TestDuplicateEnvironmentSurfaces409(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
-		w.Write([]byte(`{"message":"Environment with this name already exists."}`))
+		_, _ = w.Write([]byte(`{"message":"Environment with this name already exists."}`))
 	}))
 	name := "prod"
 	if _, err := c.CreateEnvironment(context.Background(), "proj1", EnvironmentRequest{Name: &name}); err == nil {

@@ -25,7 +25,7 @@ import (
 // response; the fix is to always `make([]T, 0, ...)` regardless of count.
 func TestDataSourcesReturnEmptyListNotNull(t *testing.T) {
 	emptyArray := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+		_, _ = w.Write([]byte(`[]`))
 	}))
 	t.Cleanup(emptyArray.Close)
 	c, err := client.New(emptyArray.URL, "test-token")
