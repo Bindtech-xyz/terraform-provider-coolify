@@ -11,7 +11,7 @@
 
 default: install
 
-.PHONY: build install lint fmt test testacc docs
+.PHONY: build install lint fmt test testacc docs release
 
 build:
 	go build -v ./...
@@ -36,3 +36,8 @@ testacc:
 
 docs:
 	go generate ./...
+
+# make release VERSION=v0.1.1
+release:
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=vX.Y.Z" >&2; exit 1; }
+	scripts/release.sh $(VERSION)
