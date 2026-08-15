@@ -131,9 +131,28 @@ object).
 ## CI / Releases
 
 The repo lives on Forgejo (`Applications/terraform-provider-coolify` on
-git.lan.bdigitalservices.com); `.forgejo/workflows/` is the CI that actually runs.
-`.github/workflows/` is kept for a possible GitHub mirror (publishing to
-registry.terraform.io requires GitHub) — keep both in sync when editing CI.
+git.lan.bdigitalservices.com, remote `origin`); `.forgejo/workflows/` is the CI that
+actually runs there. It is published to `registry.terraform.io` from a GitHub mirror
+(remote `github`, `github.com/Bindtech-xyz/terraform-provider-coolify` — registry
+ingestion only works from GitHub). Keep `.forgejo/workflows/` and `.github/workflows/`
+in sync when editing CI logic, but **do not push `main` straight to `github`** —
+`.forgejo/workflows/` has no purpose there and was deliberately dropped from that
+mirror. Instead:
+
+```sh
+git checkout github-mirror
+git merge main              # bring in new commits from main
+# if main touched .forgejo/workflows/, it comes back here too — remove it again:
+git rm -r .forgejo/ 2>/dev/null && git commit -m "drop .forgejo/workflows again"
+git push github github-mirror:main
+git checkout main
+```
+
+This is a merge-forward branch, never rebased/rewritten, so the push is always a plain
+fast-forward — no force-push needed. `secrets/` and `Taskfile.yml` are gitignored
+(maintainer's personal acceptance-test tooling, depends on a machine-local SOPS/age
+config outside this repo) — they exist locally but were deliberately never meant to be
+tracked going forward.
 
 Tag `vX.Y.Z` → release workflow runs GoReleaser (config in `.goreleaser.yml`): signs
 SHA256SUMS with the GPG key from repo secrets and attaches
