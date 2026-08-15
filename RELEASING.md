@@ -4,7 +4,26 @@ Internal runbook for cutting a release. Not needed to build, test, or use the
 provider — see `CLAUDE.md` for why this file (like `.forgejo/`) is excluded from
 the `github-mirror` branch pushed to GitHub.
 
-## TL;DR
+## Current mode: accumulate on `dev`, release only on request
+
+While this provider is being iterated on from a consumer project
+(`/projects/contabo`, via `~/.tofurc`'s `dev_overrides` pointing at
+`~/go/bin` — see that repo's `tofu/versions.tf` for the consumer side), **do not
+run `task bugs:ship` / tag a new version unless explicitly asked to.** Instead:
+
+1. Fix the bug on the `dev` branch (`git checkout dev` if not already there).
+2. `go install .` — updates `~/go/bin/terraform-provider-coolify`, which is what
+   `dev_overrides` actually serves. The consumer picks up the fix on its very next
+   `tofu plan`/`apply` — no push, no branch, no version needed for that part.
+3. Commit and `git push origin dev` for backup/visibility. This does **not**
+   trigger a release (`.github/workflows/release.yml` only fires on a `v*` tag;
+   `scripts/release.sh` itself refuses to run off any branch but `main`).
+4. Repeat as more bugs come in.
+
+Only once told to actually ship: merge `dev` into `main` (`git checkout main &&
+git merge dev`), then follow the TL;DR below as normal.
+
+## TL;DR (once actually asked to release)
 
 ```sh
 task bugs:ship MSG="fix: describe the bug" VERSION=v0.1.2
