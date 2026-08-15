@@ -60,6 +60,7 @@ make test                         # unit tests (client tests use httptest, no cr
 make lint                         # golangci-lint run
 make docs                         # go generate → tfplugindocs regenerates docs/
 make testacc                      # ALL acceptance tests — hits a real Coolify instance
+make release VERSION=v0.1.1       # gate, sync github-mirror, tag + push both remotes
 
 # Single acceptance test:
 COOLIFY_ENDPOINT=... COOLIFY_TOKEN=... TF_ACC=1 \
@@ -135,31 +136,54 @@ git.lan.bdigitalservices.com, remote `origin`); `.forgejo/workflows/` is the CI 
 actually runs there. It is published to `registry.terraform.io` from a GitHub mirror
 (remote `github`, `github.com/Bindtech-xyz/terraform-provider-coolify` — registry
 ingestion only works from GitHub). Keep `.forgejo/workflows/` and `.github/workflows/`
-in sync when editing CI logic, but **do not push `main` straight to `github`** —
-`.forgejo/workflows/` has no purpose there and was deliberately dropped from that
-mirror. Instead:
+in sync when editing CI logic, but **do not push `main` straight to `github`** — the
+`github-mirror` branch is what actually gets pushed there, and it deliberately omits a
+few paths (see **GitHub mirror exclusions** below).
+
+`secrets/` and `Taskfile.yml` are gitignored (maintainer's personal acceptance-test
+tooling, depends on a machine-local SOPS/age config outside this repo) — they exist
+locally but were deliberately never meant to be tracked going forward.
+
+### Cutting a release
+
+`scripts/release.sh vX.Y.Z` (or `make release VERSION=vX.Y.Z`) does the whole thing:
+gate (gofmt/vet/build/test) → push `main` to `origin` → sync `github-mirror` → push it
+to `github`'s `main` → tag both remotes → push both tags. Refuses to run from a dirty
+tree, off `main`, or over a tag that already exists on either remote.
+
+Tag `vX.Y.Z` → GitHub's release workflow runs GoReleaser (config in `.goreleaser.yml`):
+signs SHA256SUMS with the GPG key from repo secrets (`GPG_PRIVATE_KEY`, `PASSPHRASE`)
+and attaches `terraform-registry-manifest.json` (protocol 6.0). Forgejo's own release
+workflow does the same against `GITEA_TOKEN` if that remote's tag is pushed too.
+Registry repo naming/tag conventions are load-bearing: repo must stay
+`terraform-provider-coolify`, tags semver with `v`. Once a version's GitHub release
+exists, `registry.terraform.io` picks it up automatically — no manual step after the
+first `Publish provider` link-up.
+
+### GitHub mirror exclusions
+
+`github-mirror` is a merge-forward branch (never rebased/rewritten, so the push to
+`github` is always a plain fast-forward — no force-push needed) that tracks `main`
+minus `MIRROR_EXCLUDES` in `scripts/release.sh`, currently:
+
+- `.forgejo/` — meaningless on GitHub (GitHub Actions can't run Forgejo Actions
+  workflows), and no secrets in it, just irrelevant CI config.
+- `CLAUDE.md` — internal maintainer/AI-agent guidance (this file), not something a
+  public OSS consumer needs.
+
+To add another exclusion, add it to `MIRROR_EXCLUDES` in `scripts/release.sh` — the
+merge-conflict auto-resolution there already generalizes over the whole list. Manual
+sync (e.g. mid-development, not at release time) works the same way the script does it
+internally:
 
 ```sh
 git checkout github-mirror
-git merge main              # bring in new commits from main
-# if main touched .forgejo/workflows/, it comes back here too — remove it again:
-git rm -r .forgejo/ 2>/dev/null && git commit -m "drop .forgejo/workflows again"
+git merge main
+# if main touched an excluded path, it comes back here too — drop it again:
+git rm -r --ignore-unmatch .forgejo CLAUDE.md && git commit --no-edit
 git push github github-mirror:main
 git checkout main
 ```
-
-This is a merge-forward branch, never rebased/rewritten, so the push is always a plain
-fast-forward — no force-push needed. `secrets/` and `Taskfile.yml` are gitignored
-(maintainer's personal acceptance-test tooling, depends on a machine-local SOPS/age
-config outside this repo) — they exist locally but were deliberately never meant to be
-tracked going forward.
-
-Tag `vX.Y.Z` → release workflow runs GoReleaser (config in `.goreleaser.yml`): signs
-SHA256SUMS with the GPG key from repo secrets and attaches
-`terraform-registry-manifest.json` (protocol 6.0). GoReleaser picks its target from the
-token env var: `GITEA_TOKEN` → Forgejo release (URLs in `gitea_urls`), `GITHUB_TOKEN` →
-GitHub release. Registry repo naming/tag conventions are load-bearing: repo must stay
-`terraform-provider-coolify`, tags semver with `v`.
 
 ## Docs
 
