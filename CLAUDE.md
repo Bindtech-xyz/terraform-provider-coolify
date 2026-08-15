@@ -102,12 +102,19 @@ adding endpoints, grep the controller, not the spec. Error bodies are Laravel-st
 `{"uuid": ...}` (shared env vars return `{"id": ...}`; destinations return the full
 object).
 
-## Releases
+## CI / Releases
 
-Tag `vX.Y.Z` → `.github/workflows/release.yml` runs GoReleaser (config in
-`.goreleaser.yml`): signs SHA256SUMS with the GPG key from repo secrets and attaches
-`terraform-registry-manifest.json` (protocol 6.0). Registry repo naming/tag conventions
-are load-bearing: repo must stay `terraform-provider-coolify`, tags semver with `v`.
+The repo lives on Forgejo (`Applications/terraform-provider-coolify` on
+git.lan.bdigitalservices.com); `.forgejo/workflows/` is the CI that actually runs.
+`.github/workflows/` is kept for a possible GitHub mirror (publishing to
+registry.terraform.io requires GitHub) — keep both in sync when editing CI.
+
+Tag `vX.Y.Z` → release workflow runs GoReleaser (config in `.goreleaser.yml`): signs
+SHA256SUMS with the GPG key from repo secrets and attaches
+`terraform-registry-manifest.json` (protocol 6.0). GoReleaser picks its target from the
+token env var: `GITEA_TOKEN` → Forgejo release (URLs in `gitea_urls`), `GITHUB_TOKEN` →
+GitHub release. Registry repo naming/tag conventions are load-bearing: repo must stay
+`terraform-provider-coolify`, tags semver with `v`.
 
 ## Docs
 

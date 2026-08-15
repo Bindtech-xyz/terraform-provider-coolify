@@ -1,0 +1,76 @@
+# Forgejo Actions port of .github/workflows/test.yml.
+#
+# Differences from the GitHub version:
+#   - actions are pulled fully-qualified from code.forgejo.org (mirrors of the
+#     canonical actions/*), so resolution does not depend on the instance's
+#     DEFAULT_ACTIONS_URL setting;
+#   - golangci-lint-action is replaced by the official install script (the
+#     GitHub action hard-depends on the GitHub API);
+#   - hashicorp/setup-terraform is dropped: terraform-plugin-testing downloads
+#     the Terraform CLI by itself when it is not on PATH (pin with
+#     TF_ACC_TERRAFORM_VERSION if needed).
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://code.forgejo.org/actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go mod download
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -s -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"; exit 1
+          fi
+      - run: go vet ./...
+      - run: go build -v ./...
+      - run: go test ./... -v -timeout=120s
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://code.forgejo.org/actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin"
+      - run: PATH="$(go env GOPATH)/bin:$PATH" golangci-lint run --timeout=5m
+
+  # Acceptance tests need a live (disposable!) Coolify instance. The job is a
+  # no-op until the COOLIFY_ENDPOINT / COOLIFY_TOKEN repository secrets are set
+  # (Settings → Actions → Secrets) — secrets cannot be tested in a job-level
+  # `if` on Forgejo, hence the in-step guard.
+  acceptance:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [build]
+    env:
+      COOLIFY_ENDPOINT: ${{ secrets.COOLIFY_ENDPOINT }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v4
+      - uses: https://code.forgejo.org/actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run acceptance tests
+        run: |
+          if [ -z "$COOLIFY_ENDPOINT" ] || [ -z "$COOLIFY_TOKEN" ]; then
+            echo "COOLIFY_ENDPOINT/COOLIFY_TOKEN secrets not set — skipping acceptance tests."
+            exit 0
+          fi
+          TF_ACC=1 go test ./internal/provider/ -v -timeout=30m

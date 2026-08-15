@@ -1,6 +1,16 @@
-# GoReleaser configuration for publishing to the Terraform Registry.
+# GoReleaser configuration producing Terraform-Registry-compliant release
+# assets (zips, manifest, signed SHA256SUMS).
 # Reference: https://developer.hashicorp.com/terraform/registry/providers/publishing
+#
+# The release target is picked from the token in the environment:
+#   GITHUB_TOKEN → GitHub release (needed for registry.terraform.io)
+#   GITEA_TOKEN  → Forgejo release on the instance below
+#     (used by .forgejo/workflows/release.yml)
 version: 2
+
+gitea_urls:
+  api: https://git.lan.bdigitalservices.com/api/v1
+  download: https://git.lan.bdigitalservices.com
 
 before:
   hooks:
