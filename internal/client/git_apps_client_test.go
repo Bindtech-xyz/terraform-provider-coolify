@@ -10,14 +10,14 @@ func TestGithubAppAddressedByNumericID(t *testing.T) {
 	var paths []string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.Method+" "+r.URL.Path)
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"id":42,"uuid":"gh1","name":"deployer","app_id":1,"installation_id":2}`))
-		case r.Method == http.MethodDelete:
-			w.Write([]byte(`{"message":"deleted"}`))
+			_, _ = w.Write([]byte(`{"id":42,"uuid":"gh1","name":"deployer","app_id":1,"installation_id":2}`))
+		case http.MethodDelete:
+			_, _ = w.Write([]byte(`{"message":"deleted"}`))
 		default:
-			w.Write([]byte(`[{"id":42,"uuid":"gh1","name":"deployer"}]`))
+			_, _ = w.Write([]byte(`[{"id":42,"uuid":"gh1","name":"deployer"}]`))
 		}
 	}))
 
@@ -46,7 +46,7 @@ func TestGithubAppAddressedByNumericID(t *testing.T) {
 
 func TestGitlabAppList(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":7,"uuid":"gl1","name":"gitlab","html_url":"https://gitlab.com"}]`))
+		_, _ = w.Write([]byte(`[{"id":7,"uuid":"gl1","name":"gitlab","html_url":"https://gitlab.com"}]`))
 	}))
 	app, err := c.GetGitlabApp(context.Background(), 7)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestGithubRepositoriesUnwrapped(t *testing.T) {
 		if r.URL.Path != "/api/v1/github-apps/42/repositories" {
 			t.Errorf("path = %s", r.URL.Path)
 		}
-		w.Write([]byte(`{"repositories":[{"id":1,"name":"api","full_name":"acme/api","private":true}]}`))
+		_, _ = w.Write([]byte(`{"repositories":[{"id":1,"name":"api","full_name":"acme/api","private":true}]}`))
 	}))
 	repos, err := c.ListGithubAppRepositories(context.Background(), 42)
 	if err != nil {

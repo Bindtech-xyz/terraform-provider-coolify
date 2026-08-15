@@ -30,7 +30,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # Pinned: an auto-resolved version can be built with an older Go than
+      # go.mod declares, which golangci-lint refuses to run against at all.
       - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.12.2
 
   # Acceptance tests need a live Coolify instance; they only run when the
   # secrets are configured on the repository.

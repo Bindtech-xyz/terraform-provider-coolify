@@ -45,7 +45,7 @@ func (c *Client) FetchServiceTemplates(ctx context.Context, templatesURL string)
 	if err != nil {
 		return nil, fmt.Errorf("GET %s: %w", templatesURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: HTTP %d", templatesURL, resp.StatusCode)

@@ -13,11 +13,11 @@ func TestScheduledTaskLifecycle(t *testing.T) {
 		switch r.Method {
 		case http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"task1"}`))
+			_, _ = w.Write([]byte(`{"uuid":"task1"}`))
 		case http.MethodDelete:
-			w.Write([]byte(`{"message":"deleted"}`))
+			_, _ = w.Write([]byte(`{"message":"deleted"}`))
 		default:
-			w.Write([]byte(`[{"uuid":"task1","name":"cleanup","command":"true","frequency":"@daily","enabled":true}]`))
+			_, _ = w.Write([]byte(`[{"uuid":"task1","name":"cleanup","command":"true","frequency":"@daily","enabled":true}]`))
 		}
 	}))
 

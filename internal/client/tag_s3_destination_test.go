@@ -8,7 +8,7 @@ import (
 
 func TestGetTagFiltersList(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"uuid":"t1","name":"frontend"},{"uuid":"t2","name":"backend"}]`))
+		_, _ = w.Write([]byte(`[{"uuid":"t1","name":"frontend"},{"uuid":"t2","name":"backend"}]`))
 	}))
 	tag, err := c.GetTag(context.Background(), "t2")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestS3StorageValidatePath(t *testing.T) {
 	var gotPath string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		w.Write([]byte(`{"message":"ok"}`))
+		_, _ = w.Write([]byte(`{"message":"ok"}`))
 	}))
 	if err := c.ValidateS3Storage(context.Background(), "s3x"); err != nil {
 		t.Fatalf("ValidateS3Storage: %v", err)
@@ -39,7 +39,7 @@ func TestS3StorageValidatePath(t *testing.T) {
 func TestCreateDestinationReturnsFullObject(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"uuid":"d1","name":"worker-isolated","network":"isolated","server":{"uuid":"srv1"}}`))
+		_, _ = w.Write([]byte(`{"uuid":"d1","name":"worker-isolated","network":"isolated","server":{"uuid":"srv1"}}`))
 	}))
 	network := "isolated"
 	dest, err := c.CreateDestination(context.Background(), "srv1", DestinationCreateRequest{Network: &network})
@@ -54,7 +54,7 @@ func TestCreateDestinationReturnsFullObject(t *testing.T) {
 func TestDuplicateDestinationSurfaces409(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
-		w.Write([]byte(`{"message":"A destination with this network already exists on the server."}`))
+		_, _ = w.Write([]byte(`{"message":"A destination with this network already exists on the server."}`))
 	}))
 	network := "isolated"
 	if _, err := c.CreateDestination(context.Background(), "srv1", DestinationCreateRequest{Network: &network}); err == nil {

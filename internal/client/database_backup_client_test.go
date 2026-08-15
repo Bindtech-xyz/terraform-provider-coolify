@@ -13,11 +13,11 @@ func TestDatabaseBackupLifecyclePaths(t *testing.T) {
 		switch r.Method {
 		case http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"bk1","message":"Backup configuration created successfully."}`))
+			_, _ = w.Write([]byte(`{"uuid":"bk1","message":"Backup configuration created successfully."}`))
 		case http.MethodPatch, http.MethodDelete:
-			w.Write([]byte(`{"message":"ok"}`))
+			_, _ = w.Write([]byte(`{"message":"ok"}`))
 		default:
-			w.Write([]byte(`[{"uuid":"bk1","frequency":"@daily","enabled":true,"save_s3":true}]`))
+			_, _ = w.Write([]byte(`[{"uuid":"bk1","frequency":"@daily","enabled":true,"save_s3":true}]`))
 		}
 	}))
 
@@ -55,7 +55,7 @@ func TestVolumeBackupUpsertUsesPUT(t *testing.T) {
 	var got string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Method + " " + r.URL.Path
-		w.Write([]byte(`{"uuid":"vb1","frequency":"@daily","enabled":true}`))
+		_, _ = w.Write([]byte(`{"uuid":"vb1","frequency":"@daily","enabled":true}`))
 	}))
 
 	freq := "@daily"

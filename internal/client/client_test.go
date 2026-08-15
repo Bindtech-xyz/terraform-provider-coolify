@@ -31,7 +31,7 @@ func newJSONServer(t *testing.T, body string) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(body))
+		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL
@@ -64,7 +64,7 @@ func TestExtraHeadersAreSentAndCannotOverrideAuthorization(t *testing.T) {
 	var gotHeaders http.Header
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHeaders = r.Header.Clone()
-		w.Write([]byte(`"4.0.0"`))
+		_, _ = w.Write([]byte(`"4.0.0"`))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -97,7 +97,7 @@ func TestAuthorizationHeaderIsSent(t *testing.T) {
 	var gotAuth string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		w.Write([]byte(`"4.0.0"`))
+		_, _ = w.Write([]byte(`"4.0.0"`))
 	}))
 
 	if _, err := c.Version(context.Background()); err != nil {
@@ -113,9 +113,9 @@ func TestCreateProjectFollowsUpWithRead(t *testing.T) {
 		switch r.Method + " " + r.URL.Path {
 		case "POST /api/v1/projects":
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"abc123"}`))
+			_, _ = w.Write([]byte(`{"uuid":"abc123"}`))
 		case "GET /api/v1/projects/abc123":
-			w.Write([]byte(`{"id":1,"uuid":"abc123","name":"demo","description":"d"}`))
+			_, _ = w.Write([]byte(`{"id":1,"uuid":"abc123","name":"demo","description":"d"}`))
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -135,7 +135,7 @@ func TestCreateProjectFollowsUpWithRead(t *testing.T) {
 func TestNotFoundIsDetectable(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"message":"Resource not found."}`))
+		_, _ = w.Write([]byte(`{"message":"Resource not found."}`))
 	}))
 
 	_, err := c.GetProject(context.Background(), "missing")
@@ -150,7 +150,7 @@ func TestNotFoundIsDetectable(t *testing.T) {
 func TestValidationErrorsAreSurfaced(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		w.Write([]byte(`{"message":"Validation error.","errors":{"name":["The name field is required."]}}`))
+		_, _ = w.Write([]byte(`{"message":"Validation error.","errors":{"name":["The name field is required."]}}`))
 	}))
 
 	_, err := c.CreateProject(context.Background(), ProjectRequest{})
@@ -171,7 +171,7 @@ func TestServerErrorsAreRetried(t *testing.T) {
 			w.WriteHeader(http.StatusBadGateway)
 			return
 		}
-		w.Write([]byte(`"4.0.0"`))
+		_, _ = w.Write([]byte(`"4.0.0"`))
 	}))
 
 	if _, err := c.Version(context.Background()); err != nil {

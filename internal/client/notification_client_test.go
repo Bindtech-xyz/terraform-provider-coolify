@@ -16,7 +16,7 @@ func TestNotificationSettingsRoundTrip(t *testing.T) {
 		if r.Method == http.MethodPatch {
 			_ = json.NewDecoder(r.Body).Decode(&patched)
 		}
-		w.Write([]byte(`{"discord_enabled":true,"deployment_failure_discord_notifications":true}`))
+		_, _ = w.Write([]byte(`{"discord_enabled":true,"deployment_failure_discord_notifications":true}`))
 	}))
 
 	settings, err := c.UpdateNotificationSettings(context.Background(), "discord", map[string]any{
@@ -48,7 +48,7 @@ func TestServerSettingSectionsHitTheirEndpoints(t *testing.T) {
 	var paths []string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.Method+" "+r.URL.Path)
-		w.Write([]byte(`{"docker_cleanup_threshold":80}`))
+		_, _ = w.Write([]byte(`{"docker_cleanup_threshold":80}`))
 	}))
 
 	ctx := context.Background()

@@ -61,9 +61,9 @@ func TestCreateCloudServerPostsAndReads(t *testing.T) {
 		case "POST /api/v1/servers/hetzner":
 			_ = json.NewDecoder(r.Body).Decode(&posted)
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"srv9"}`))
+			_, _ = w.Write([]byte(`{"uuid":"srv9"}`))
 		case "GET /api/v1/servers/srv9":
-			w.Write([]byte(`{"uuid":"srv9","name":"hetzner-1","ip":"1.2.3.4"}`))
+			_, _ = w.Write([]byte(`{"uuid":"srv9","name":"hetzner-1","ip":"1.2.3.4"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -86,7 +86,7 @@ func TestCloudCatalogPassesToken(t *testing.T) {
 	var got string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.String()
-		w.Write([]byte(`[{"name":"fsn1","description":"Falkenstein"}]`))
+		_, _ = w.Write([]byte(`[{"name":"fsn1","description":"Falkenstein"}]`))
 	}))
 	items, err := c.CloudCatalog(context.Background(), "hetzner", "locations", "tok1")
 	if err != nil {
@@ -104,10 +104,10 @@ func TestCloudTokenLifecycle(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"ct1"}`))
+			_, _ = w.Write([]byte(`{"uuid":"ct1"}`))
 			return
 		}
-		w.Write([]byte(`{"uuid":"ct1","name":"hetzner-prod","provider":"hetzner"}`))
+		_, _ = w.Write([]byte(`{"uuid":"ct1","name":"hetzner-prod","provider":"hetzner"}`))
 	}))
 
 	name, provider, token := "hetzner-prod", "hetzner", "secret"

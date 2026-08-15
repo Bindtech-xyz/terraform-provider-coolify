@@ -11,9 +11,9 @@ func TestCreateServerFollowsUpWithRead(t *testing.T) {
 		switch r.Method + " " + r.URL.Path {
 		case "POST /api/v1/servers":
 			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"uuid":"srv1"}`))
+			_, _ = w.Write([]byte(`{"uuid":"srv1"}`))
 		case "GET /api/v1/servers/srv1":
-			w.Write([]byte(`{"uuid":"srv1","name":"worker","ip":"203.0.113.10","port":22,"user":"root",
+			_, _ = w.Write([]byte(`{"uuid":"srv1","name":"worker","ip":"203.0.113.10","port":22,"user":"root",
 				"settings":{"is_reachable":true,"is_usable":true}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -34,7 +34,7 @@ func TestValidateServerPath(t *testing.T) {
 	var gotPath string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		w.Write([]byte(`{"message":"queued"}`))
+		_, _ = w.Write([]byte(`{"message":"queued"}`))
 	}))
 	if err := c.ValidateServer(context.Background(), "srv1"); err != nil {
 		t.Fatalf("ValidateServer: %v", err)
@@ -46,7 +46,7 @@ func TestValidateServerPath(t *testing.T) {
 
 func TestListServers(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"uuid":"a"},{"uuid":"b"}]`))
+		_, _ = w.Write([]byte(`[{"uuid":"a"},{"uuid":"b"}]`))
 	}))
 	servers, err := c.ListServers(context.Background())
 	if err != nil {
