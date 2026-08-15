@@ -14,8 +14,8 @@ crash.log
 .vscode/
 *.swp
 
-# Maintainer's personal acceptance-test secrets and Task tooling — depends
-# on machine-local SOPS/age config outside this repo, not needed to build,
-# test, or use the published provider. Kept locally, never committed.
-/Taskfile.yml
+# Maintainer's personal acceptance-test secrets — depends on machine-local
+# SOPS/age config outside this repo, not needed to build, test, or use the
+# published provider. Kept locally, never committed. (/Taskfile.yml at the
+# root is tracked again: it no longer wraps secrets/, just scripts/release.sh.)
 /secrets/

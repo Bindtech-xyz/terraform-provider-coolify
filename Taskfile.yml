@@ -1,0 +1,62 @@
+---
+version: "3"
+
+# Convenience wrapper around scripts/release.sh — `task bugs:...` so the
+# fix → commit → release loop never has to be remembered by hand. Doesn't
+# touch secrets/ (gitignored, machine-local, see CLAUDE.md); this Taskfile
+# is plain project tooling and is tracked in git on both remotes.
+
+tasks:
+  default:
+    desc: Liste les commandes disponibles
+    silent: true
+    cmds:
+      - task --list
+
+  bugs:status:
+    desc: "Où on en est : branche courante, état du dépôt, derniers tags publiés"
+    silent: true
+    cmds:
+      - echo "Branche  $(git branch --show-current)"
+      - echo "--- git status ---"
+      - git status --short
+      - echo "--- Derniers tags ---"
+      - git tag --sort=-creatordate | head -5
+
+  bugs:gate:
+    desc: "Vérifie que le code est prêt à committer (fmt, vet, build, test) — sans committer"
+    cmds:
+      - |
+        unformatted="$(gofmt -s -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "gofmt needed on:"; echo "$unformatted"; exit 1
+        fi
+      - go vet ./...
+      - go build ./...
+      - go test ./... -timeout 90s
+
+  bugs:ship:
+    desc: "Corrige d'abord toi-même, puis: task bugs:ship MSG='fix: ...' VERSION=v0.1.1"
+    summary: |
+      Le fix lui-même (éditer les fichiers) reste manuel — cette tâche prend le
+      relais une fois que c'est fait :
+
+        1. git add -A && git commit -m "$MSG"   (sur main)
+        2. scripts/release.sh $VERSION          (gate, push Forgejo, sync le
+           mirror GitHub, tag et pousse les deux remotes, déclenche la release
+           signée)
+
+      scripts/release.sh refuse d'écraser un tag déjà publié — en cas d'erreur
+      à cette étape, corrige et relance juste `task bugs:ship` avec le même
+      VERSION une fois le problème réglé (ou une VERSION suivante).
+    preconditions:
+      - sh: '[ -n "{{.MSG}}" ]'
+        msg: "MSG requis : task bugs:ship MSG='fix: description du bug' VERSION=v0.1.1"
+      - sh: '[ -n "{{.VERSION}}" ]'
+        msg: "VERSION requis : task bugs:ship MSG='fix: description du bug' VERSION=v0.1.1"
+      - sh: '[ "$(git branch --show-current)" = "main" ]'
+        msg: "Doit être sur main (utilise `git checkout main` d'abord)"
+    cmds:
+      - git add -A
+      - git commit -m "{{.MSG}}"
+      - scripts/release.sh {{.VERSION}}
