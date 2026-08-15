@@ -82,3 +82,25 @@ func IsUnauthorized(err error) bool {
 	return apiErr.StatusCode == http.StatusUnauthorized ||
 		(apiErr.StatusCode == http.StatusBadRequest && strings.Contains(apiErr.Message, "token"))
 }
+
+// IsBlockedByAllowedIPs reports whether err is Coolify's own instance-level IP
+// allowlist rejecting the caller — a gate entirely separate from the bearer
+// token, enforced by ApiAllowed middleware before the request ever reaches a
+// controller. Confirmed against the middleware source: always 403 with this
+// exact message, regardless of token validity.
+func IsBlockedByAllowedIPs(err error) bool {
+	var apiErr *Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden &&
+		apiErr.Message == "You are not allowed to access the API."
+}
+
+// IsAPIDisabled reports whether err is Coolify's own REST API being turned
+// off instance-wide (coolify_api_settings.api_enabled = false, or toggled
+// off some other way — e.g. the UI). Same ApiAllowed middleware, checked
+// before allowed_ips, so this and IsBlockedByAllowedIPs are mutually
+// exclusive.
+func IsAPIDisabled(err error) bool {
+	var apiErr *Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden &&
+		apiErr.Message == "API is disabled."
+}
