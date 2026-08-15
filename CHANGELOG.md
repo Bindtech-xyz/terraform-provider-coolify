@@ -9,6 +9,16 @@ released yet — everything below is `[Unreleased]`.
 
 ### Added
 
+- Provider-level `headers` attribute: a generic, sensitive map of fixed HTTP headers
+  sent with every request, applied before (and unable to override) the provider's own
+  `Authorization` header. Not modeled after any specific reverse proxy — it exists for
+  reaching a Coolify instance behind any authenticating edge layer (Cloudflare Access
+  service tokens, `oauth2-proxy`, a header-based mTLS gateway, ...). Unknown values
+  (e.g. an edge-auth resource's attributes not yet applied) produce an explicit
+  "provider block cannot depend on a same-apply resource" diagnostic instead of an
+  opaque connectivity failure. See the
+  [Reaching Coolify Behind an Authenticating Edge](https://registry.terraform.io/providers/d3nailabs/coolify/latest/docs/guides/reverse-proxy-authentication)
+  guide.
 - Initial provider: 25 resources and 22 data sources on `terraform-plugin-framework`
   v1 (protocol v6), covering the full [Coolify documentation](https://coolify.io/docs)
   sidebar — servers, projects, environments, all 5 application source modes, all 8

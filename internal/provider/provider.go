@@ -50,6 +50,7 @@ type coolifyProviderModel struct {
 	Endpoint types.String `tfsdk:"endpoint"`
 	Token    types.String `tfsdk:"token"`
 	Insecure types.Bool   `tfsdk:"insecure"`
+	Headers  types.Map    `tfsdk:"headers"`
 }
 
 // New returns the provider constructor consumed by providerserver.Serve and by
@@ -87,6 +88,24 @@ func (p *coolifyProvider) Schema(_ context.Context, _ provider.SchemaRequest, re
 					"instances with self-signed certificates. Defaults to `false`.",
 				Optional: true,
 			},
+			"headers": schema.MapAttribute{
+				MarkdownDescription: "Fixed HTTP headers sent with every request, applied before the " +
+					"provider's own `Authorization` header (which always wins on conflict). This is a " +
+					"deliberately generic escape hatch — the provider has no built-in notion of any " +
+					"particular reverse proxy — for reaching a Coolify instance placed behind an " +
+					"authenticating edge, e.g. a Cloudflare Access application gated by a service token:\n\n" +
+					"```terraform\n" +
+					"provider \"coolify\" {\n" +
+					"  headers = {\n" +
+					"    \"CF-Access-Client-Id\"     = var.cf_access_client_id\n" +
+					"    \"CF-Access-Client-Secret\" = var.cf_access_client_secret\n" +
+					"  }\n" +
+					"}\n" +
+					"```",
+				Optional:    true,
+				Sensitive:   true,
+				ElementType: types.StringType,
+			},
 		},
 	}
 }
@@ -116,6 +135,23 @@ func (p *coolifyProvider) Configure(ctx context.Context, req provider.ConfigureR
 				"Set it statically or via the "+envToken+" environment variable.",
 		)
 	}
+	if config.Headers.IsUnknown() {
+		// A common shape for this: headers built from a resource this same
+		// configuration also creates (e.g. a Cloudflare Access service token).
+		// Terraform cannot configure a provider from a value produced by a
+		// resource in the same apply — the provider must exist before any
+		// resource can be planned. Point at the fix instead of failing
+		// opaquely deep inside Configure.
+		resp.Diagnostics.AddAttributeError(
+			pathRoot("headers"),
+			"Unknown Coolify provider headers",
+			"The provider cannot connect: \"headers\" is derived from a value that is not known until "+
+				"apply — often because it references an attribute of a resource this same configuration "+
+				"creates. A provider block is evaluated before any resource, so it cannot depend on one "+
+				"created in the same apply; create that resource in a separate apply (or a separate "+
+				"Terraform run/state) first, then reference its output here.",
+		)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -141,6 +177,14 @@ func (p *coolifyProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	opts := []client.Option{
 		client.WithUserAgent("terraform-provider-coolify/" + p.version),
+	}
+	if !config.Headers.IsNull() {
+		headers := make(map[string]string, len(config.Headers.Elements()))
+		resp.Diagnostics.Append(config.Headers.ElementsAs(ctx, &headers, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		opts = append(opts, client.WithExtraHeaders(headers))
 	}
 	if config.Insecure.ValueBool() {
 		transport := http.DefaultTransport.(*http.Transport).Clone()

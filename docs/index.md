@@ -102,6 +102,9 @@ variable, attribute by attribute.
   — the import ID format for every resource, including the composite ones.
 - [Provisioning Cloud Servers](guides/cloud-provisioning.html.md) — bringing up VMs at
   Hetzner, DigitalOcean or Vultr and registering them with Coolify in one apply.
+- [Reaching Coolify Behind an Authenticating Edge](guides/reverse-proxy-authentication.html.md)
+  — using `headers` to reach an instance behind Cloudflare Access or a similar
+  authenticating proxy.
 - [The Dynamic Service Catalog](guides/dynamic-service-catalog.html.md) — discovering
   and validating one-click service types without waiting on a provider release.
 
@@ -111,5 +114,15 @@ variable, attribute by attribute.
 ### Optional
 
 - `endpoint` (String) URL of the Coolify instance, e.g. `https://coolify.example.com`. `/api/v1` is appended automatically. May also be set with the `COOLIFY_ENDPOINT` environment variable. Defaults to Coolify Cloud (`https://app.coolify.io`).
+- `headers` (Map of String, Sensitive) Fixed HTTP headers sent with every request, applied before the provider's own `Authorization` header (which always wins on conflict). This is a deliberately generic escape hatch — the provider has no built-in notion of any particular reverse proxy — for reaching a Coolify instance placed behind an authenticating edge, e.g. a Cloudflare Access application gated by a service token:
+
+```terraform
+provider "coolify" {
+  headers = {
+    "CF-Access-Client-Id"     = var.cf_access_client_id
+    "CF-Access-Client-Secret" = var.cf_access_client_secret
+  }
+}
+```
 - `insecure` (Boolean) Skip TLS certificate verification. Only for self-hosted instances with self-signed certificates. Defaults to `false`.
 - `token` (String, Sensitive) API token, created in Coolify under **Keys & Tokens → API tokens**. May also be set with the `COOLIFY_TOKEN` environment variable.

@@ -60,6 +60,39 @@ func TestNewRejectsEmptyToken(t *testing.T) {
 	}
 }
 
+func TestExtraHeadersAreSentAndCannotOverrideAuthorization(t *testing.T) {
+	var gotHeaders http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeaders = r.Header.Clone()
+		w.Write([]byte(`"4.0.0"`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := New(srv.URL, "real-token", WithExtraHeaders(map[string]string{
+		"CF-Access-Client-Id":     "id123",
+		"CF-Access-Client-Secret": "secret456",
+		// A conflicting Authorization must not survive: the client's own
+		// bearer token always wins, applied after extra headers.
+		"Authorization": "Bearer attacker-supplied",
+	}))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.Version(context.Background()); err != nil {
+		t.Fatalf("Version: %v", err)
+	}
+
+	if got := gotHeaders.Get("CF-Access-Client-Id"); got != "id123" {
+		t.Errorf("CF-Access-Client-Id = %q, want id123", got)
+	}
+	if got := gotHeaders.Get("CF-Access-Client-Secret"); got != "secret456" {
+		t.Errorf("CF-Access-Client-Secret = %q, want secret456", got)
+	}
+	if want := "Bearer real-token"; gotHeaders.Get("Authorization") != want {
+		t.Errorf("Authorization = %q, want %q (extra headers must not override it)", gotHeaders.Get("Authorization"), want)
+	}
+}
+
 func TestAuthorizationHeaderIsSent(t *testing.T) {
 	var gotAuth string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

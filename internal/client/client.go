@@ -34,10 +34,11 @@ const (
 
 // Client talks to a single Coolify instance as a single API token.
 type Client struct {
-	baseURL    *url.URL
-	token      string
-	userAgent  string
-	httpClient *http.Client
+	baseURL      *url.URL
+	token        string
+	userAgent    string
+	httpClient   *http.Client
+	extraHeaders map[string]string
 }
 
 // Option customises a Client at construction time.
@@ -52,6 +53,19 @@ func WithHTTPClient(hc *http.Client) Option {
 // WithUserAgent sets the User-Agent header sent on every request.
 func WithUserAgent(ua string) Option {
 	return func(c *Client) { c.userAgent = ua }
+}
+
+// WithExtraHeaders adds fixed HTTP headers to every request. This is a
+// deliberately generic escape hatch for anything sitting between Terraform
+// and Coolify that gates on headers — a Cloudflare Access application (see
+// CF-Access-Client-Id/CF-Access-Client-Secret), oauth2-proxy, a header-based
+// mTLS gateway, or an internal API gateway. The provider has no built-in
+// notion of any particular one of these; it just forwards whatever headers
+// it is given. Values are applied before the client's own headers
+// (Authorization, Accept, User-Agent, Content-Type), so a caller cannot
+// accidentally override Coolify's own authentication this way.
+func WithExtraHeaders(headers map[string]string) Option {
+	return func(c *Client) { c.extraHeaders = headers }
 }
 
 // New builds a Client for the given endpoint. The endpoint is the instance root
@@ -122,6 +136,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		req, err := http.NewRequestWithContext(ctx, method, c.baseURL.String()+path, reader)
 		if err != nil {
 			return fmt.Errorf("building request: %w", err)
+		}
+		for k, v := range c.extraHeaders {
+			req.Header.Set(k, v)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Accept", "application/json")
