@@ -2,10 +2,11 @@
 
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
-[Semantic Versioning](https://semver.org/) once the first tag is cut. Nothing has been
-released yet — everything below is `[Unreleased]`.
+[Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-15
 
 ### Added
 
