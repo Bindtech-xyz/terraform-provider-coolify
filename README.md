@@ -144,6 +144,18 @@ export COOLIFY_TOKEN="..."
 TF_ACC=1 go test ./internal/provider/ -v -run TestAccProjectResource
 ```
 
+`TestAccApplicationResource` additionally deploys a real container (`nginx:alpine`,
+no build) end to end — creates it, polls until Coolify reports it `running:*`, then
+destroys it. It needs `COOLIFY_ACC_SERVER_UUID` (an existing, usable server with a
+single destination) and is skipped, not failed, when that variable is unset — most
+environments running the rest of the suite have no deployable server available.
+
+If the instance sits behind an authenticating edge (see the
+[Reaching Coolify Behind an Authenticating Edge](https://registry.terraform.io/providers/d3nailabs/coolify/latest/docs/guides/reverse-proxy-authentication)
+guide), also set `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` (or the equivalent for
+your edge layer) — every acceptance test's `Config` prepends a `provider "coolify" {}`
+block carrying them as `headers` when both are set.
+
 ## Releasing
 
 1. Register your GPG public key on registry.terraform.io (User Settings → Signing Keys).

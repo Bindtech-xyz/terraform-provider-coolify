@@ -170,10 +170,15 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"git_branch": schema.StringAttribute{
 				MarkdownDescription: "Git branch to deploy.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"git_commit_sha": schema.StringAttribute{
-				MarkdownDescription: "Pin the deployment to a specific commit (defaults to HEAD).",
-				Optional:            true,
+				MarkdownDescription: "Pin the deployment to a specific commit. Coolify defaults " +
+					"unset to `HEAD`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"private_key_uuid": schema.StringAttribute{
 				MarkdownDescription: "UUID of the deploy key for private repositories. " +
@@ -205,15 +210,23 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			// Build & runtime.
 			"build_pack": schema.StringAttribute{
 				MarkdownDescription: "Build pack for git-based modes: `nixpacks`, `static`, " +
-					"`dockerfile`, `dockercompose` or `railpack`.",
+					"`dockerfile`, `dockercompose` or `railpack`. Left unset for non-git modes " +
+					"(`dockerfile`/`dockerimage`), Coolify reports back the effective build " +
+					"strategy instead — e.g. `dockerimage` — which is not itself a settable value " +
+					"here, only an observed one.",
 				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
 					stringvalidator.OneOf("nixpacks", "static", "dockerfile", "dockercompose", "railpack"),
 				},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"static_image": schema.StringAttribute{
-				MarkdownDescription: "Image serving static builds (e.g. `nginx:alpine`).",
-				Optional:            true,
+				MarkdownDescription: "Image serving static builds (e.g. `nginx:alpine`). Also " +
+					"echoed back by Coolify for `dockerimage`-mode applications.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"install_command": schema.StringAttribute{
 				MarkdownDescription: "Override the install command.",
@@ -228,8 +241,11 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:            true,
 			},
 			"base_directory": schema.StringAttribute{
-				MarkdownDescription: "Directory inside the repository to use as build context (monorepos).",
-				Optional:            true,
+				MarkdownDescription: "Directory inside the repository to use as build context " +
+					"(monorepos). Coolify defaults unset to `/`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"publish_directory": schema.StringAttribute{
 				MarkdownDescription: "Directory to publish for static builds.",
@@ -314,12 +330,18 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 
 			// Limits.
 			"limits_memory": schema.StringAttribute{
-				MarkdownDescription: "Memory limit (e.g. `512m`, `1g`).",
-				Optional:            true,
+				MarkdownDescription: "Memory limit (e.g. `512m`, `1g`). Coolify defaults unset to " +
+					"`0` (unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"limits_cpus": schema.StringAttribute{
-				MarkdownDescription: "CPU limit (e.g. `0.5`, `2`).",
-				Optional:            true,
+				MarkdownDescription: "CPU limit (e.g. `0.5`, `2`). Coolify defaults unset to `0` " +
+					"(unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 
 			// Read-only.
@@ -537,7 +559,9 @@ func applicationToModel(a *client.Application, prior applicationResourceModel) a
 	m.InstallCommand = keepNullIfEmpty(a.InstallCommand, prior.InstallCommand)
 	m.BuildCommand = keepNullIfEmpty(a.BuildCommand, prior.BuildCommand)
 	m.StartCommand = keepNullIfEmpty(a.StartCommand, prior.StartCommand)
-	m.BaseDirectory = keepNullIfEmpty(a.BaseDirectory, prior.BaseDirectory)
+	// base_directory is Computed (Coolify defaults unset to "/", never ""):
+	// adopt directly, no null-preservation — "" never legitimately occurs.
+	m.BaseDirectory = types.StringValue(a.BaseDirectory)
 	m.PublishDirectory = keepNullIfEmpty(a.PublishDirectory, prior.PublishDirectory)
 	m.PortsExposes = keepNullIfEmpty(a.PortsExposes, prior.PortsExposes)
 	m.PortsMappings = keepNullIfEmpty(a.PortsMappings, prior.PortsMappings)
@@ -546,8 +570,10 @@ func applicationToModel(a *client.Application, prior applicationResourceModel) a
 	m.PostDeploymentCommand = keepNullIfEmpty(a.PostDeploymentCommand, prior.PostDeploymentCommand)
 	m.WatchPaths = keepNullIfEmpty(a.WatchPaths, prior.WatchPaths)
 	m.DockerRegistryImageTag = keepNullIfEmpty(a.DockerRegistryImageTag, prior.DockerRegistryImageTag)
-	m.LimitsMemory = keepNullIfEmpty(a.LimitsMemory, prior.LimitsMemory)
-	m.LimitsCPUs = keepNullIfEmpty(a.LimitsCPUs, prior.LimitsCPUs)
+	// Both Computed (Coolify defaults unset to "0"/unlimited, never ""):
+	// adopt directly, no null-preservation — "" never legitimately occurs.
+	m.LimitsMemory = types.StringValue(a.LimitsMemory)
+	m.LimitsCPUs = types.StringValue(a.LimitsCPUs)
 
 	return m
 }

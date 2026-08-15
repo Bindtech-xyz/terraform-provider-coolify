@@ -66,6 +66,19 @@ released yet — everything below is `[Unreleased]`.
 
 ### Fixed
 
+- `coolify_application`: seven attributes (`base_directory`, `limits_memory`,
+  `limits_cpus`, `git_branch`, `git_commit_sha`, `build_pack`, `static_image`) were
+  `Optional`-only, but Coolify assigns each a non-empty default whenever it is left
+  unset (`base_directory` → `/`, the limits → `0`, `git_branch` → `main`,
+  `git_commit_sha` → `HEAD`, `build_pack`/`static_image` → the effective build
+  strategy/image) — never `""`. An `Optional`-only attribute whose final state
+  diverges from a planned `null` value is a framework-level "provider produced
+  inconsistent result" error, which aborted `apply` for essentially every
+  non-git-mode application (found by deploying a real `dockerimage`-mode
+  application end to end). All seven are now `Optional`+`Computed` with
+  `UseStateForUnknown`. `TestAccApplicationResource` deploys and destroys a real
+  container (`nginx:alpine`) as a permanent regression test; asserts on
+  `build_pack`/`limits_cpus` resolving to their known defaults.
 - `GET /version` returns plain text (`4.3.2`), not JSON — the generic response decoder
   always attempted `json.Unmarshal`, so the provider's `Configure`-time connectivity
   check failed against every real Coolify instance. Found by running the acceptance

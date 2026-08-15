@@ -58,9 +58,9 @@ resource "coolify_application" "nginx" {
 ### Optional
 
 - `autogenerate_domain` (Boolean) Let Coolify generate a domain when `domains` is unset. Defaults to `true`.
-- `base_directory` (String) Directory inside the repository to use as build context (monorepos).
+- `base_directory` (String) Directory inside the repository to use as build context (monorepos). Coolify defaults unset to `/`.
 - `build_command` (String) Override the build command.
-- `build_pack` (String) Build pack for git-based modes: `nixpacks`, `static`, `dockerfile`, `dockercompose` or `railpack`.
+- `build_pack` (String) Build pack for git-based modes: `nixpacks`, `static`, `dockerfile`, `dockercompose` or `railpack`. Left unset for non-git modes (`dockerfile`/`dockerimage`), Coolify reports back the effective build strategy instead — e.g. `dockerimage` — which is not itself a settable value here, only an observed one.
 - `custom_docker_run_options` (String) Extra options appended to `docker run`.
 - `description` (String) Free-form description.
 - `destination_uuid` (String) Destination (Docker network) UUID. Required when the server has several destinations. Changing it forces replacement.
@@ -71,7 +71,7 @@ resource "coolify_application" "nginx" {
 - `environment_name` (String) Environment name (e.g. `production`). Exactly one of `environment_name` or `environment_uuid` must be set. Changing it forces replacement.
 - `environment_uuid` (String) Environment UUID. Changing it forces replacement.
 - `git_branch` (String) Git branch to deploy.
-- `git_commit_sha` (String) Pin the deployment to a specific commit (defaults to HEAD).
+- `git_commit_sha` (String) Pin the deployment to a specific commit. Coolify defaults unset to `HEAD`.
 - `git_repository` (String) Git repository URL (public/deploy-key modes) or `org/repo` (GitHub App mode).
 - `github_app_uuid` (String) UUID of the GitHub App for private repositories. Setting it selects the private-github-app mode. Changing it forces replacement.
 - `health_check_enabled` (Boolean) Enable the container health check.
@@ -82,8 +82,8 @@ resource "coolify_application" "nginx" {
 - `is_force_https_enabled` (Boolean) Redirect HTTP to HTTPS.
 - `is_preview_deployments_enabled` (Boolean) Deploy pull-request previews.
 - `is_static` (Boolean) Serve the build output as a static site.
-- `limits_cpus` (String) CPU limit (e.g. `0.5`, `2`).
-- `limits_memory` (String) Memory limit (e.g. `512m`, `1g`).
+- `limits_cpus` (String) CPU limit (e.g. `0.5`, `2`). Coolify defaults unset to `0` (unlimited).
+- `limits_memory` (String) Memory limit (e.g. `512m`, `1g`). Coolify defaults unset to `0` (unlimited).
 - `name` (String) Application name. Coolify derives one when omitted.
 - `ports_exposes` (String) Comma-separated container ports to expose, e.g. `"3000"`.
 - `ports_mappings` (String) Comma-separated host:container port mappings, e.g. `"8080:3000"`.
@@ -93,7 +93,7 @@ resource "coolify_application" "nginx" {
 - `publish_directory` (String) Directory to publish for static builds.
 - `redirect` (String) www redirection behaviour: `www`, `non-www` or `both`.
 - `start_command` (String) Override the start command.
-- `static_image` (String) Image serving static builds (e.g. `nginx:alpine`).
+- `static_image` (String) Image serving static builds (e.g. `nginx:alpine`). Also echoed back by Coolify for `dockerimage`-mode applications.
 - `watch_paths` (String) Newline-separated path globs that trigger auto-deploys (monorepos).
 
 ### Read-Only
