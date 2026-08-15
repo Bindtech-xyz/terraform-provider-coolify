@@ -9,7 +9,55 @@ description: |-
 
 Interact with a [Coolify](https://coolify.io) v4 instance (cloud or self-hosted) through its REST API.
 
+Coverage tracks the [Coolify documentation](https://coolify.io/docs) sidebar: every
+API-manageable concept — servers, projects, environments, applications (all 5 source
+modes), databases (all 8 engines), services (one-click and custom compose), storage,
+backups, notifications, GitHub/GitLab sources, and Hetzner/DigitalOcean/Vultr
+provisioning — has a resource or data source. Three design choices set it apart from a
+literal 1:1 API mapping:
+
+- **Consolidated resources.** One `coolify_application` covers all 5 source modes
+  (public git, private git via deploy key or GitHub App, inline Dockerfile, registry
+  image); one `coolify_database` covers all 8 engines. Writing `for_each` over a map of
+  a dozen apps stays a map of a dozen blocks, not a dispatch table of resource types.
+- **A live service catalog.** `coolify_service_templates` fetches Coolify's own
+  one-click catalog feed at plan time — 300+ entries that change with every Coolify
+  release. `coolify_service.type` is deliberately not validated against a hardcoded
+  enum, so the provider never lags the catalog it deploys from.
+- **Correct behind an async API.** Coolify's delete endpoints return before the
+  container teardown finishes. Deleting an application, database, service or
+  destination polls (500ms → 5s backoff) until Coolify confirms the object is actually
+  gone, so a destroy immediately followed by a create of the same name never races a
+  container still being torn down.
+
+## Authentication
+
+Every request needs an API token, created in the Coolify dashboard under
+**Keys & Tokens → API tokens**. A token carries one or more **abilities** that gate
+what it can do:
+
+| Ability | Unlocks |
+| --- | --- |
+| `read` | Every data source, and `Read` on every resource (needed just to refresh state). |
+| `write` | `Create`, `Update` and `Delete` on every resource — required for this provider to manage anything. |
+| `read:sensitive` | Generated database credentials, S3 keys, private key material and env-var values come back in API responses instead of being hidden. Without it the provider still works — see below — but `terraform plan` can never show you a value Coolify generated on your behalf. |
+
+**Without `read:sensitive`**, every sensitive attribute this provider manages
+(`coolify_database`'s generated passwords, `coolify_environment_variable.value`,
+`coolify_private_key.private_key`, `coolify_s3_storage`'s keys, …) is API-hidden on
+every read. The provider handles this deliberately, not as a workaround: it keeps
+whatever value is already in state instead of overwriting it with the empty string the
+API returns, so plans stay clean. The trade-off is that if you rotate such a value
+directly in the Coolify UI, Terraform will not notice — a `write`-only token trades
+drift detection on secrets for narrower access. Grant `read:sensitive` if you want
+Coolify-generated credentials to flow into outputs and back if changed out-of-band;
+grant only `write` for a tighter blast radius.
+
+Set the token as `COOLIFY_TOKEN`, never as a literal in `.tf` files — see
+[Environment Variables](#environment-variables) below.
+
 ## Example Usage
+
 
 ```terraform
 terraform {
@@ -26,6 +74,36 @@ provider "coolify" {
   endpoint = "https://coolify.example.com"
 }
 ```
+
+## Environment Variables
+
+Both connection attributes can be set outside configuration, which is the recommended
+way to keep the token out of state files and version control:
+
+| Variable | Equivalent to | Notes |
+| --- | --- | --- |
+| `COOLIFY_ENDPOINT` | `endpoint` | Optional — defaults to Coolify Cloud when unset. |
+| `COOLIFY_TOKEN` | `token` | Required one way or another; the provider fails fast in `Configure` if neither is set. |
+
+An explicit `endpoint`/`token` in the provider block always wins over the environment
+variable, attribute by attribute.
+
+## Guides
+
+- [Getting Started](guides/getting-started.html.md) — install, configure, deploy a
+  first application end to end.
+- [Deploying a Full Stack](guides/full-stack-deployment.html.md) — project,
+  environment, database, application and variables wired together, and the `for_each`
+  pattern for deploying many applications from one block.
+- [Token Abilities & Sensitive Data](guides/authentication-and-token-abilities.html.md)
+  — the full mechanics behind the abilities table above, and how the provider avoids
+  spurious diffs when secrets are hidden.
+- [Importing Existing Infrastructure](guides/importing-existing-infrastructure.html.md)
+  — the import ID format for every resource, including the composite ones.
+- [Provisioning Cloud Servers](guides/cloud-provisioning.html.md) — bringing up VMs at
+  Hetzner, DigitalOcean or Vultr and registering them with Coolify in one apply.
+- [The Dynamic Service Catalog](guides/dynamic-service-catalog.html.md) — discovering
+  and validating one-click service types without waiting on a provider release.
 
 <!-- schema generated by tfplugindocs -->
 ## Schema

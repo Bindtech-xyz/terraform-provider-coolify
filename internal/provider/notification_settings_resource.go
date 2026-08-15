@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -16,8 +17,9 @@ import (
 )
 
 var (
-	_ resource.Resource              = (*notificationSettingsResource)(nil)
-	_ resource.ResourceWithConfigure = (*notificationSettingsResource)(nil)
+	_ resource.Resource                = (*notificationSettingsResource)(nil)
+	_ resource.ResourceWithConfigure   = (*notificationSettingsResource)(nil)
+	_ resource.ResourceWithImportState = (*notificationSettingsResource)(nil)
 )
 
 // NewNotificationSettingsResource is registered in provider.go.
@@ -330,6 +332,13 @@ func (r *notificationSettingsResource) Update(ctx context.Context, req resource.
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+}
+
+// ImportState expects the channel name (email, discord, slack, telegram,
+// pushover or webhook) — the settings object is a per-channel singleton, so
+// there is no separate identifier to track.
+func (r *notificationSettingsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("channel"), req, resp)
 }
 
 // Delete disables the channel; the settings object itself is a singleton the

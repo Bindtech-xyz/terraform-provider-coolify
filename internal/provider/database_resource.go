@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -402,10 +403,45 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 }
 
-// ImportState expects "<engine>/<uuid>" because the API object does not carry
-// its engine in a directly reusable form.
+// ImportState expects "<engine>/<uuid>": GetDatabase's response does not
+// carry the engine in a directly reusable form (credential field names differ
+// per engine, and several engines are ambiguous from the image name alone —
+// e.g. redis/keydb/dragonfly all speak the Redis protocol). engine is
+// Required with RequiresReplace, so leaving it unset here would make the
+// first plan after import propose a destroy/recreate instead of a clean
+// no-op.
 func (r *databaseResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("uuid"), req, resp)
+	parts := strings.SplitN(req.ID, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Unexpected import identifier",
+			fmt.Sprintf("Expected \"<engine>/<uuid>\", got %q.", req.ID),
+		)
+		return
+	}
+
+	engine := parts[0]
+	valid := false
+	for _, e := range client.DatabaseEngines {
+		if string(e) == engine {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		names := make([]string, len(client.DatabaseEngines))
+		for i, e := range client.DatabaseEngines {
+			names[i] = string(e)
+		}
+		resp.Diagnostics.AddError(
+			"Unexpected import identifier",
+			fmt.Sprintf("Unknown engine %q. Valid engines: %s.", engine, strings.Join(names, ", ")),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("engine"), engine)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("uuid"), parts[1])...)
 }
 
 // databaseToModel merges the API object with the prior state.
