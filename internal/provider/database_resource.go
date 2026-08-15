@@ -1,0 +1,451 @@
+package provider
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"github.com/d3nailabs/terraform-provider-coolify/internal/client"
+)
+
+var (
+	_ resource.Resource                = (*databaseResource)(nil)
+	_ resource.ResourceWithConfigure   = (*databaseResource)(nil)
+	_ resource.ResourceWithImportState = (*databaseResource)(nil)
+)
+
+// NewDatabaseResource is registered in provider.go.
+func NewDatabaseResource() resource.Resource {
+	return &databaseResource{}
+}
+
+type databaseResource struct {
+	client *client.Client
+}
+
+// databaseResourceModel is the union of the eight engines. Engine-specific
+// attributes must only be set for the matching engine — Coolify rejects
+// extras with a 422 listing the offending fields.
+type databaseResourceModel struct {
+	UUID   types.String `tfsdk:"uuid"`
+	Engine types.String `tfsdk:"engine"`
+
+	// Placement.
+	ProjectUUID     types.String `tfsdk:"project_uuid"`
+	EnvironmentName types.String `tfsdk:"environment_name"`
+	EnvironmentUUID types.String `tfsdk:"environment_uuid"`
+	ServerUUID      types.String `tfsdk:"server_uuid"`
+	DestinationUUID types.String `tfsdk:"destination_uuid"`
+
+	// Common.
+	Name          types.String `tfsdk:"name"`
+	Description   types.String `tfsdk:"description"`
+	Image         types.String `tfsdk:"image"`
+	IsPublic      types.Bool   `tfsdk:"is_public"`
+	PublicPort    types.Int64  `tfsdk:"public_port"`
+	InstantDeploy types.Bool   `tfsdk:"instant_deploy"`
+	LimitsMemory  types.String `tfsdk:"limits_memory"`
+	LimitsCPUs    types.String `tfsdk:"limits_cpus"`
+
+	// PostgreSQL.
+	PostgresUser     types.String `tfsdk:"postgres_user"`
+	PostgresPassword types.String `tfsdk:"postgres_password"`
+	PostgresDB       types.String `tfsdk:"postgres_db"`
+	PostgresConf     types.String `tfsdk:"postgres_conf"`
+
+	// MySQL.
+	MysqlRootPassword types.String `tfsdk:"mysql_root_password"`
+	MysqlPassword     types.String `tfsdk:"mysql_password"`
+	MysqlUser         types.String `tfsdk:"mysql_user"`
+	MysqlDatabase     types.String `tfsdk:"mysql_database"`
+
+	// MariaDB.
+	MariadbRootPassword types.String `tfsdk:"mariadb_root_password"`
+	MariadbPassword     types.String `tfsdk:"mariadb_password"`
+	MariadbUser         types.String `tfsdk:"mariadb_user"`
+	MariadbDatabase     types.String `tfsdk:"mariadb_database"`
+
+	// MongoDB.
+	MongoInitdbRootUsername types.String `tfsdk:"mongo_initdb_root_username"`
+	MongoInitdbRootPassword types.String `tfsdk:"mongo_initdb_root_password"`
+	MongoInitdbDatabase     types.String `tfsdk:"mongo_initdb_database"`
+
+	// Redis / KeyDB / Dragonfly.
+	RedisPassword     types.String `tfsdk:"redis_password"`
+	KeydbPassword     types.String `tfsdk:"keydb_password"`
+	DragonflyPassword types.String `tfsdk:"dragonfly_password"`
+
+	// Clickhouse.
+	ClickhouseAdminUser     types.String `tfsdk:"clickhouse_admin_user"`
+	ClickhouseAdminPassword types.String `tfsdk:"clickhouse_admin_password"`
+
+	// Read-only.
+	InternalDBURL types.String `tfsdk:"internal_db_url"`
+	ExternalDBURL types.String `tfsdk:"external_db_url"`
+	Status        types.String `tfsdk:"status"`
+}
+
+func (r *databaseResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_database"
+}
+
+func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	engines := make([]string, len(client.DatabaseEngines))
+	for i, e := range client.DatabaseEngines {
+		engines[i] = string(e)
+	}
+
+	sensitiveEngineString := func(desc string) schema.Attribute {
+		return schema.StringAttribute{
+			MarkdownDescription: desc,
+			Optional:            true,
+			Computed:            true,
+			Sensitive:           true,
+			PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+		}
+	}
+	engineString := func(desc string) schema.Attribute {
+		return schema.StringAttribute{
+			MarkdownDescription: desc,
+			Optional:            true,
+			Computed:            true,
+			PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+		}
+	}
+
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "A standalone database. The `engine` attribute selects among the eight " +
+			"engines Coolify supports; only set the engine-specific attributes matching your engine " +
+			"(Coolify rejects the others). Credentials left unset are generated by Coolify and " +
+			"exported as attributes.",
+		Attributes: map[string]schema.Attribute{
+			"uuid": schema.StringAttribute{
+				MarkdownDescription: "Server-assigned identifier.",
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"engine": schema.StringAttribute{
+				MarkdownDescription: "Database engine: `" + engines[0] + "`, `" + engines[1] + "`, `" +
+					engines[2] + "`, `" + engines[3] + "`, `" + engines[4] + "`, `" + engines[5] +
+					"`, `" + engines[6] + "` or `" + engines[7] + "`. Changing it forces replacement.",
+				Required:      true,
+				Validators:    []validator.String{stringvalidator.OneOf(engines...)},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+
+			// Placement.
+			"project_uuid": schema.StringAttribute{
+				MarkdownDescription: "UUID of the project. Changing it forces replacement.",
+				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+			"environment_name": schema.StringAttribute{
+				MarkdownDescription: "Environment name. Exactly one of `environment_name`/`environment_uuid`.",
+				Optional:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+			"environment_uuid": schema.StringAttribute{
+				MarkdownDescription: "Environment UUID.",
+				Optional:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+			"server_uuid": schema.StringAttribute{
+				MarkdownDescription: "UUID of the server. Changing it forces replacement.",
+				Required:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+			"destination_uuid": schema.StringAttribute{
+				MarkdownDescription: "Destination UUID (required when the server has several).",
+				Optional:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+
+			// Common.
+			"name": schema.StringAttribute{
+				MarkdownDescription: "Database name. Coolify generates one when omitted.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"description": schema.StringAttribute{
+				MarkdownDescription: "Free-form description.",
+				Optional:            true,
+			},
+			"image": schema.StringAttribute{
+				MarkdownDescription: "Docker image override (e.g. `postgres:16-alpine`).",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"is_public": schema.BoolAttribute{
+				MarkdownDescription: "Expose the database on a public port. Defaults to `false`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"public_port": schema.Int64Attribute{
+				MarkdownDescription: "Host port when `is_public` is `true`.",
+				Optional:            true,
+			},
+			"instant_deploy": schema.BoolAttribute{
+				MarkdownDescription: "Start the database right after creation. Defaults to `false`.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
+			"limits_memory": schema.StringAttribute{
+				MarkdownDescription: "Memory limit (e.g. `512m`).",
+				Optional:            true,
+			},
+			"limits_cpus": schema.StringAttribute{
+				MarkdownDescription: "CPU limit (e.g. `0.5`).",
+				Optional:            true,
+			},
+
+			// PostgreSQL.
+			"postgres_user":     sensitiveEngineString("PostgreSQL user (postgresql engine)."),
+			"postgres_password": sensitiveEngineString("PostgreSQL password (postgresql engine)."),
+			"postgres_db":       engineString("Initial database name (postgresql engine)."),
+			"postgres_conf": schema.StringAttribute{
+				MarkdownDescription: "Base64-encoded postgresql.conf (postgresql engine).",
+				Optional:            true,
+			},
+
+			// MySQL.
+			"mysql_root_password": sensitiveEngineString("MySQL root password (mysql engine)."),
+			"mysql_password":      sensitiveEngineString("MySQL user password (mysql engine)."),
+			"mysql_user":          engineString("MySQL user (mysql engine)."),
+			"mysql_database":      engineString("Initial database name (mysql engine)."),
+
+			// MariaDB.
+			"mariadb_root_password": sensitiveEngineString("MariaDB root password (mariadb engine)."),
+			"mariadb_password":      sensitiveEngineString("MariaDB user password (mariadb engine)."),
+			"mariadb_user":          engineString("MariaDB user (mariadb engine)."),
+			"mariadb_database":      engineString("Initial database name (mariadb engine)."),
+
+			// MongoDB.
+			"mongo_initdb_root_username": sensitiveEngineString("MongoDB root username (mongodb engine)."),
+			"mongo_initdb_root_password": sensitiveEngineString("MongoDB root password (mongodb engine)."),
+			"mongo_initdb_database":      engineString("Initial database name (mongodb engine)."),
+
+			// Redis / KeyDB / Dragonfly.
+			"redis_password":     sensitiveEngineString("Redis password (redis engine)."),
+			"keydb_password":     sensitiveEngineString("KeyDB password (keydb engine)."),
+			"dragonfly_password": sensitiveEngineString("Dragonfly password (dragonfly engine)."),
+
+			// Clickhouse.
+			"clickhouse_admin_user":     sensitiveEngineString("Clickhouse admin user (clickhouse engine)."),
+			"clickhouse_admin_password": sensitiveEngineString("Clickhouse admin password (clickhouse engine)."),
+
+			// Read-only.
+			"internal_db_url": schema.StringAttribute{
+				MarkdownDescription: "Connection URL usable from other resources on the same destination.",
+				Computed:            true,
+				Sensitive:           true,
+			},
+			"external_db_url": schema.StringAttribute{
+				MarkdownDescription: "Public connection URL when `is_public` is enabled.",
+				Computed:            true,
+				Sensitive:           true,
+			},
+			"status": schema.StringAttribute{
+				MarkdownDescription: "Runtime status reported by Coolify.",
+				Computed:            true,
+			},
+		},
+	}
+}
+
+func (r *databaseResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.client = resourceClient(req, resp)
+}
+
+func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequest {
+	req := client.DatabaseRequest{
+		Name:         stringOrNil(m.Name),
+		Description:  stringOrNil(m.Description),
+		Image:        stringOrNil(m.Image),
+		IsPublic:     boolOrNil(m.IsPublic),
+		PublicPort:   int64OrNil(m.PublicPort),
+		LimitsMemory: stringOrNil(m.LimitsMemory),
+		LimitsCPUs:   stringOrNil(m.LimitsCPUs),
+
+		PostgresUser:     stringOrNil(m.PostgresUser),
+		PostgresPassword: stringOrNil(m.PostgresPassword),
+		PostgresDB:       stringOrNil(m.PostgresDB),
+		PostgresConf:     stringOrNil(m.PostgresConf),
+
+		MysqlRootPassword: stringOrNil(m.MysqlRootPassword),
+		MysqlPassword:     stringOrNil(m.MysqlPassword),
+		MysqlUser:         stringOrNil(m.MysqlUser),
+		MysqlDatabase:     stringOrNil(m.MysqlDatabase),
+
+		MariadbRootPassword: stringOrNil(m.MariadbRootPassword),
+		MariadbPassword:     stringOrNil(m.MariadbPassword),
+		MariadbUser:         stringOrNil(m.MariadbUser),
+		MariadbDatabase:     stringOrNil(m.MariadbDatabase),
+
+		MongoInitdbRootUsername: stringOrNil(m.MongoInitdbRootUsername),
+		MongoInitdbRootPassword: stringOrNil(m.MongoInitdbRootPassword),
+		MongoInitdbDatabase:     stringOrNil(m.MongoInitdbDatabase),
+
+		RedisPassword:     stringOrNil(m.RedisPassword),
+		KeydbPassword:     stringOrNil(m.KeydbPassword),
+		DragonflyPassword: stringOrNil(m.DragonflyPassword),
+
+		ClickhouseAdminUser:     stringOrNil(m.ClickhouseAdminUser),
+		ClickhouseAdminPassword: stringOrNil(m.ClickhouseAdminPassword),
+	}
+	if create {
+		req.ProjectUUID = stringOrNil(m.ProjectUUID)
+		req.EnvironmentName = stringOrNil(m.EnvironmentName)
+		req.EnvironmentUUID = stringOrNil(m.EnvironmentUUID)
+		req.ServerUUID = stringOrNil(m.ServerUUID)
+		req.DestinationUUID = stringOrNil(m.DestinationUUID)
+		req.InstantDeploy = boolOrNil(m.InstantDeploy)
+	}
+	return req
+}
+
+func (r *databaseResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan databaseResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if plan.EnvironmentName.IsNull() && plan.EnvironmentUUID.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing environment",
+			"Set environment_name or environment_uuid on the coolify_database resource.",
+		)
+		return
+	}
+
+	engine := client.DatabaseEngine(plan.Engine.ValueString())
+	db, err := r.client.CreateDatabase(ctx, engine, databaseToRequest(plan, true))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Unable to create Coolify %s database", engine),
+			err.Error(),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, databaseToModel(db, plan))...)
+}
+
+func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state databaseResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	db, err := r.client.GetDatabase(ctx, state.UUID.ValueString())
+	if err != nil {
+		if client.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Unable to read Coolify database %s", state.UUID.ValueString()),
+			err.Error(),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, databaseToModel(db, state))...)
+}
+
+func (r *databaseResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan databaseResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	db, err := r.client.UpdateDatabase(ctx, plan.UUID.ValueString(), databaseToRequest(plan, false))
+	if err != nil {
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Unable to update Coolify database %s", plan.UUID.ValueString()),
+			err.Error(),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, databaseToModel(db, plan))...)
+}
+
+func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state databaseResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.client.DeleteDatabase(ctx, state.UUID.ValueString(), nil, nil, nil, nil)
+	if err != nil && !client.IsNotFound(err) {
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Unable to delete Coolify database %s", state.UUID.ValueString()),
+			err.Error(),
+		)
+	}
+}
+
+// ImportState expects "<engine>/<uuid>" because the API object does not carry
+// its engine in a directly reusable form.
+func (r *databaseResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("uuid"), req, resp)
+}
+
+// databaseToModel merges the API object with the prior state.
+func databaseToModel(d *client.Database, prior databaseResourceModel) databaseResourceModel {
+	m := prior
+	m.UUID = types.StringValue(d.UUID)
+	m.Name = types.StringValue(d.Name)
+	m.Image = types.StringValue(d.Image)
+	m.IsPublic = types.BoolValue(d.IsPublic)
+	m.Status = types.StringValue(d.Status)
+	m.InternalDBURL = types.StringValue(d.InternalDBURL)
+	m.ExternalDBURL = types.StringValue(d.ExternalDBURL)
+	m.Description = keepNullIfEmpty(d.Description, prior.Description)
+	if d.PublicPort != nil {
+		m.PublicPort = types.Int64Value(*d.PublicPort)
+	} else if prior.PublicPort.IsUnknown() {
+		m.PublicPort = types.Int64Null()
+	}
+
+	// Engine credentials: adopt server values (they may be generated); the API
+	// hides them without read:sensitive, in which case configured values win.
+	m.PostgresUser = keepPriorIfHidden(d.PostgresUser, prior.PostgresUser)
+	m.PostgresPassword = keepPriorIfHidden(d.PostgresPassword, prior.PostgresPassword)
+	m.PostgresDB = keepPriorIfHidden(d.PostgresDB, prior.PostgresDB)
+	m.MysqlRootPassword = keepPriorIfHidden(d.MysqlRootPassword, prior.MysqlRootPassword)
+	m.MysqlPassword = keepPriorIfHidden(d.MysqlPassword, prior.MysqlPassword)
+	m.MysqlUser = keepPriorIfHidden(d.MysqlUser, prior.MysqlUser)
+	m.MysqlDatabase = keepPriorIfHidden(d.MysqlDatabase, prior.MysqlDatabase)
+	m.MariadbRootPassword = keepPriorIfHidden(d.MariadbRootPassword, prior.MariadbRootPassword)
+	m.MariadbPassword = keepPriorIfHidden(d.MariadbPassword, prior.MariadbPassword)
+	m.MariadbUser = keepPriorIfHidden(d.MariadbUser, prior.MariadbUser)
+	m.MariadbDatabase = keepPriorIfHidden(d.MariadbDatabase, prior.MariadbDatabase)
+	m.MongoInitdbRootUsername = keepPriorIfHidden(d.MongoInitdbRootUsername, prior.MongoInitdbRootUsername)
+	m.MongoInitdbRootPassword = keepPriorIfHidden(d.MongoInitdbRootPassword, prior.MongoInitdbRootPassword)
+	m.MongoInitdbDatabase = keepPriorIfHidden(d.MongoInitdbDatabase, prior.MongoInitdbDatabase)
+	m.RedisPassword = keepPriorIfHidden(d.RedisPassword, prior.RedisPassword)
+	m.KeydbPassword = keepPriorIfHidden(d.KeydbPassword, prior.KeydbPassword)
+	m.DragonflyPassword = keepPriorIfHidden(d.DragonflyPassword, prior.DragonflyPassword)
+	m.ClickhouseAdminUser = keepPriorIfHidden(d.ClickhouseAdminUser, prior.ClickhouseAdminUser)
+	m.ClickhouseAdminPassword = keepPriorIfHidden(d.ClickhouseAdminPassword, prior.ClickhouseAdminPassword)
+
+	return m
+}

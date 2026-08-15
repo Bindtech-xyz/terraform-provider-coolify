@@ -1,0 +1,15 @@
+# Binaries
+terraform-provider-coolify
+dist/
+
+# Terraform working dirs from manual testing
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+crash.log
+
+# Editors
+.idea/
+.vscode/
+*.swp

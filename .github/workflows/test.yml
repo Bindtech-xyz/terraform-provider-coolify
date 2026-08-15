@@ -1,0 +1,60 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go mod download
+      - run: go vet ./...
+      - run: go build -v ./...
+      - run: go test ./... -v -timeout=120s
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v6
+
+  # Acceptance tests need a live Coolify instance; they only run when the
+  # secrets are configured on the repository.
+  acceptance:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform: ["1.9.*", "1.13.*"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+      - name: Run acceptance tests
+        if: env.COOLIFY_ENDPOINT != ''
+        env:
+          TF_ACC: "1"
+          COOLIFY_ENDPOINT: ${{ secrets.COOLIFY_ENDPOINT }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: go test ./internal/provider/ -v -timeout=30m

@@ -1,0 +1,143 @@
+# Terraform Provider for Coolify
+
+A [Terraform](https://terraform.io) / [OpenTofu](https://opentofu.org) provider for
+[Coolify](https://coolify.io) v4 — built to manage a whole instance and deploy fleets of
+applications as code. Written against the Coolify **main branch** API (v4.3.x controllers,
+not the lagging OpenAPI spec), on the
+[Terraform Plugin Framework](https://developer.hashicorp.com/terraform/plugin/framework)
+(protocol v6, Terraform ≥ 1.1).
+
+## Coverage
+
+| Object | Resource | Data source |
+| --- | :--: | :--: |
+| Private keys | `coolify_private_key` | `coolify_private_keys` |
+| Servers | `coolify_server` | `coolify_servers` |
+| Destinations (Docker networks) | `coolify_destination` | — |
+| Projects | `coolify_project` | `coolify_project`, `coolify_projects` |
+| Environments | `coolify_environment` | `coolify_environments` |
+| Applications (5 modes: public git, deploy key, GitHub App, Dockerfile, registry image) | `coolify_application` | `coolify_applications` |
+| Databases (8 engines: postgresql, mysql, mariadb, mongodb, redis, keydb, dragonfly, clickhouse) | `coolify_database` | `coolify_databases` |
+| Services (one-click **and** raw docker-compose) | `coolify_service` | `coolify_services` |
+| Service catalog (**dynamic**, 300+ templates from the live CDN feed) | — | `coolify_service_templates` |
+| Env vars (application/service/database) | `coolify_environment_variable` | — |
+| Shared env vars (team/project/environment/server) | `coolify_shared_environment_variable` | — |
+| S3 storages | `coolify_s3_storage` | — |
+| Tags | `coolify_tag` | — |
+| Teams | — | `coolify_team` |
+
+This intentionally covers the gaps left by the existing community providers
+(environments, both env-var families, destinations, S3, tags, all 8 database engines,
+all 5 application modes, dynamic service catalog).
+
+## Usage
+
+```hcl
+terraform {
+  required_providers {
+    coolify = {
+      source  = "d3nailabs/coolify"
+      version = "~> 0.1"
+    }
+  }
+}
+
+provider "coolify" {
+  endpoint = "https://coolify.example.com" # defaults to Coolify Cloud
+  # token via the COOLIFY_TOKEN environment variable (Keys & Tokens → API tokens)
+}
+```
+
+Full stack in one apply — project, environment, database, app wired together:
+
+```hcl
+resource "coolify_project" "shop" {
+  name = "shop"
+}
+
+resource "coolify_database" "pg" {
+  engine           = "postgresql"
+  project_uuid     = coolify_project.shop.uuid
+  environment_name = "production"
+  server_uuid      = data.coolify_servers.all.servers[0].uuid
+  instant_deploy   = true
+}
+
+resource "coolify_application" "api" {
+  project_uuid     = coolify_project.shop.uuid
+  environment_name = "production"
+  server_uuid      = data.coolify_servers.all.servers[0].uuid
+
+  git_repository = "https://github.com/acme/shop-api"
+  git_branch     = "main"
+  build_pack     = "nixpacks"
+  ports_exposes  = "3000"
+  instant_deploy = true
+}
+
+resource "coolify_environment_variable" "db" {
+  parent_type = "application"
+  parent_uuid = coolify_application.api.uuid
+  key         = "DATABASE_URL"
+  value       = coolify_database.pg.internal_db_url
+}
+```
+
+Deploying many apps is a `for_each` away — see `examples/`.
+
+### API token abilities
+
+Create the token with the `write` ability (and `read:sensitive` if you want generated
+database credentials and env-var values readable back into state — without it the
+provider keeps your configured values and never diffs on hidden ones).
+
+## Development
+
+Requirements: Go ≥ 1.25, Terraform ≥ 1.1 (or OpenTofu), GNU make.
+
+```sh
+make build     # compile
+make test      # unit tests (httptest, no credentials needed)
+make install   # go install into GOBIN for dev_overrides
+make testacc   # acceptance tests — creates real objects, use a disposable instance!
+make docs      # regenerate docs/ with tfplugindocs
+```
+
+### Local iteration with dev_overrides
+
+No local registry, no version bumps, no lock-file fights — put this in `~/.terraformrc`:
+
+```hcl
+provider_installation {
+  dev_overrides {
+    "d3nailabs/coolify" = "/home/<you>/go/bin"
+  }
+  direct {}
+}
+```
+
+Then `make install` and run `terraform plan`/`apply` directly — **skip `terraform init`**,
+dev_overrides bypasses it.
+
+### Acceptance tests
+
+```sh
+export COOLIFY_ENDPOINT="https://coolify.example.com"
+export COOLIFY_TOKEN="..."
+TF_ACC=1 go test ./internal/provider/ -v -run TestAccProjectResource
+```
+
+## Releasing
+
+1. Register your GPG public key on registry.terraform.io (User Settings → Signing Keys).
+2. Set the `GPG_PRIVATE_KEY` and `PASSPHRASE` repository secrets.
+3. `git tag v0.1.0 && git push origin v0.1.0` — the Release workflow runs GoReleaser and
+   the registry picks the release up via webhook (first publication is manual in the
+   registry UI: Publish → Provider).
+
+## Roadmap
+
+GitHub/GitLab Apps, scheduled tasks, database backups, server proxy/log-drain settings,
+notifications, cloud provisioning (Hetzner/DigitalOcean/Vultr), deployments data source.
+The client layer (`internal/client/`) already models the transport; each is an additive
+resource following the same pattern.
