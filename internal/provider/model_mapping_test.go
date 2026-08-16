@@ -138,3 +138,37 @@ func TestGithubAppToModelAdoptsSecretsWhenReadable(t *testing.T) {
 		t.Errorf("webhook_secret = %q, want it adopted from the API", m.WebhookSecret.ValueString())
 	}
 }
+
+// TestApplicationToModelManualWebhookSecrets covers both keepPriorIfHidden
+// outcomes for the four manual_webhook_secret_* fields — $hidden on the
+// Application model, echoed only to a token with read:sensitive, same as
+// coolify_github_app's client_secret/webhook_secret.
+func TestApplicationToModelManualWebhookSecrets(t *testing.T) {
+	// Token without read:sensitive: API echoes "", state falls back to prior.
+	api := &client.Application{UUID: "a1", Name: "api"}
+	prior := applicationResourceModel{ManualWebhookSecretGithub: types.StringValue("configured-secret")}
+	m := applicationToModel(api, prior)
+	if m.ManualWebhookSecretGithub.ValueString() != "configured-secret" {
+		t.Errorf("manual_webhook_secret_github = %q, want the configured value preserved",
+			m.ManualWebhookSecretGithub.ValueString())
+	}
+
+	// Token with read:sensitive, or a freshly-generated Coolify default: adopted.
+	api = &client.Application{
+		UUID: "a1", Name: "api",
+		ManualWebhookSecretGithub:    "generated-by-coolify",
+		ManualWebhookSecretGitlab:    "gl-secret",
+		ManualWebhookSecretBitbucket: "bb-secret",
+		ManualWebhookSecretGitea:     "ge-secret",
+	}
+	m = applicationToModel(api, applicationResourceModel{})
+	if m.ManualWebhookSecretGithub.ValueString() != "generated-by-coolify" {
+		t.Errorf("manual_webhook_secret_github = %q, want it adopted from the API",
+			m.ManualWebhookSecretGithub.ValueString())
+	}
+	if m.ManualWebhookSecretGitlab.ValueString() != "gl-secret" ||
+		m.ManualWebhookSecretBitbucket.ValueString() != "bb-secret" ||
+		m.ManualWebhookSecretGitea.ValueString() != "ge-secret" {
+		t.Errorf("manual webhook secrets not all adopted: %+v", m)
+	}
+}

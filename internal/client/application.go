@@ -53,9 +53,16 @@ type Application struct {
 	RedirectBehaviour       string `json:"redirect"`
 	LimitsMemory            string `json:"limits_memory"`
 	LimitsCPUs              string `json:"limits_cpus"`
-	Status                  string `json:"status"`
-	EnvironmentID           int64  `json:"environment_id"`
-	DestinationID           int64  `json:"destination_id"`
+	// ManualWebhookSecret* are `$hidden` on the Application model — echoed
+	// only to a token with the read:sensitive ability, same as
+	// GithubApp.client_secret/webhook_secret.
+	ManualWebhookSecretGithub    string `json:"manual_webhook_secret_github"`
+	ManualWebhookSecretGitlab    string `json:"manual_webhook_secret_gitlab"`
+	ManualWebhookSecretBitbucket string `json:"manual_webhook_secret_bitbucket"`
+	ManualWebhookSecretGitea     string `json:"manual_webhook_secret_gitea"`
+	Status                       string `json:"status"`
+	EnvironmentID                int64  `json:"environment_id"`
+	DestinationID                int64  `json:"destination_id"`
 }
 
 // ApplicationRequest is the union body for the five create endpoints and for
@@ -106,6 +113,17 @@ type ApplicationRequest struct {
 	PreDeploymentCommand   *string `json:"pre_deployment_command,omitempty"`
 	PostDeploymentCommand  *string `json:"post_deployment_command,omitempty"`
 	WatchPaths             *string `json:"watch_paths,omitempty"`
+
+	// Manual webhook secrets (for Coolify's own /webhooks/source/*/events/manual
+	// endpoints, independent of any git-App-managed webhook). Accepted by both
+	// create and update — no whitelist mismatch, unlike dockerfile*. Coolify
+	// generates a random 40-char value itself when left unset (Application's
+	// `creating` model event, `??=`), so these are Optional+Computed, not
+	// Required.
+	ManualWebhookSecretGithub    *string `json:"manual_webhook_secret_github,omitempty"`
+	ManualWebhookSecretGitlab    *string `json:"manual_webhook_secret_gitlab,omitempty"`
+	ManualWebhookSecretBitbucket *string `json:"manual_webhook_secret_bitbucket,omitempty"`
+	ManualWebhookSecretGitea     *string `json:"manual_webhook_secret_gitea,omitempty"`
 
 	// Domains.
 	Domains            *string `json:"domains,omitempty"`

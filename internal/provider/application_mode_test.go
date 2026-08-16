@@ -149,3 +149,28 @@ func TestApplicationToRequestDockerfileTargetBuildUpdateOnly(t *testing.T) {
 		t.Error("update request must include dockerfile_target_build")
 	}
 }
+
+// TestApplicationToRequestManualWebhookSecretsSentBothWays confirms the four
+// manual_webhook_secret_* fields have no create/update whitelist mismatch
+// (confirmed against the controller source — present in both allowed-fields
+// lists), unlike dockerfile/dockerfile_target_build, so they belong in the
+// base request, sent unconditionally.
+func TestApplicationToRequestManualWebhookSecretsSentBothWays(t *testing.T) {
+	model := applicationResourceModel{
+		Name:                         types.StringValue("api"),
+		ManualWebhookSecretGithub:    types.StringValue("gh-secret"),
+		ManualWebhookSecretGitlab:    types.StringValue("gl-secret"),
+		ManualWebhookSecretBitbucket: types.StringValue("bb-secret"),
+		ManualWebhookSecretGitea:     types.StringValue("ge-secret"),
+	}
+
+	for _, create := range []bool{true, false} {
+		req := applicationToRequest(model, create)
+		if req.ManualWebhookSecretGithub == nil || *req.ManualWebhookSecretGithub != "gh-secret" ||
+			req.ManualWebhookSecretGitlab == nil || *req.ManualWebhookSecretGitlab != "gl-secret" ||
+			req.ManualWebhookSecretBitbucket == nil || *req.ManualWebhookSecretBitbucket != "bb-secret" ||
+			req.ManualWebhookSecretGitea == nil || *req.ManualWebhookSecretGitea != "ge-secret" {
+			t.Errorf("manual webhook secrets must be sent regardless of create=%v, got %+v", create, req)
+		}
+	}
+}

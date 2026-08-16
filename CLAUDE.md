@@ -46,6 +46,19 @@ Deliberate design choices (do not "fix" these):
   'dockerfile'`, `null` otherwise — conditional on build_pack, not a blanket default,
   so like `base_directory` it's `Computed`, not just `Optional`, to avoid a "provider
   produced inconsistent result" error regardless of which branch applies.
+  `manual_webhook_secret_{github,gitlab,bitbucket,gitea}` (for Coolify's own
+  `/webhooks/source/{provider}/events/manual` endpoints, independent of any
+  git-App-managed webhook — useful when the App's own webhook URL is unreachable,
+  e.g. an instance domain that must stay `http://` behind a reverse proxy) are also
+  writable, unlike `coolify_github_app`'s secrets which the API can never accept back:
+  confirmed against `Application::booted()`'s `creating` hook, Coolify only generates
+  a random 40-character value via `??=` when the field arrives null, so a caller-supplied
+  value on create is used as-is and a config-driven rotation is a normal `Update`, no
+  `RequiresReplace` needed — both endpoints accept all four unconditionally (confirmed
+  against the real `$allowedFields`, not the misleading per-endpoint OpenAPI
+  annotations — see the `dockerfile_location` entry above for how that trap looks).
+  `Optional`+`Computed`+`Sensitive`, `keepPriorIfHidden` (same `$hidden`-but-only-
+  behind-`read:sensitive` treatment as `coolify_github_app.client_secret`).
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are sent;
   the client only sends non-null fields so this composes safely.
