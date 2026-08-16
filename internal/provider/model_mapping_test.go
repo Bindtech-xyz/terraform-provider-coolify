@@ -104,3 +104,37 @@ func TestGithubAppToModelKeepsSecrets(t *testing.T) {
 		t.Errorf("private_key_uuid must be resolved from private_key_id, got %q", m.PrivateKeyUUID.ValueString())
 	}
 }
+
+// TestGithubAppToModelAdoptsSecretsWhenReadable covers the other half of
+// keepPriorIfHidden: a token with the read:sensitive ability gets real
+// secrets back from Coolify (confirmed live: GithubApp.$hidden is overridden
+// per-request by removeSensitiveData()'s makeVisible() call, so this isn't
+// speculative), and state must adopt them — this is what makes import
+// producible without stashing client_secret/webhook_secret anywhere first.
+func TestGithubAppToModelAdoptsSecretsWhenReadable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":7,"uuid":"key-uuid-7"}]`))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := client.New(srv.URL, "test-token")
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+
+	api := &client.GithubApp{
+		ID: 42, UUID: "gh1", Name: "deployer",
+		ClientSecret: "real-secret", WebhookSecret: "real-hook", PrivateKeyID: 7,
+	}
+	// Freshly imported: no prior configuration to fall back to.
+	r := &githubAppResource{client: c}
+	m, diags := r.githubAppToModel(context.Background(), api, githubAppResourceModel{})
+	if diags.HasError() {
+		t.Fatalf("githubAppToModel: %v", diags)
+	}
+	if m.ClientSecret.ValueString() != "real-secret" {
+		t.Errorf("client_secret = %q, want it adopted from the API", m.ClientSecret.ValueString())
+	}
+	if m.WebhookSecret.ValueString() != "real-hook" {
+		t.Errorf("webhook_secret = %q, want it adopted from the API", m.WebhookSecret.ValueString())
+	}
+}

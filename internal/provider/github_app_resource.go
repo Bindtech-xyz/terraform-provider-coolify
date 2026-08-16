@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/client"
@@ -101,14 +102,22 @@ func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required:            true,
 			},
 			"client_secret": schema.StringAttribute{
-				MarkdownDescription: "OAuth client secret of the App.",
-				Required:            true,
-				Sensitive:           true,
+				MarkdownDescription: "OAuth client secret of the App. Required to create it via " +
+					"this provider; a token with the `read:sensitive` ability adopts it from Coolify " +
+					"on import, so it doesn't need to be supplied for an imported App.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"webhook_secret": schema.StringAttribute{
-				MarkdownDescription: "Webhook secret of the App.",
-				Required:            true,
-				Sensitive:           true,
+				MarkdownDescription: "Webhook secret of the App. Required to create it via this " +
+					"provider; a token with the `read:sensitive` ability adopts it from Coolify on " +
+					"import, so it doesn't need to be supplied for an imported App.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"private_key_uuid": schema.StringAttribute{
 				MarkdownDescription: "UUID of the `coolify_private_key` holding the App's private key.",
@@ -287,16 +296,21 @@ func resolvePrivateKeyUUID(ctx context.Context, c *client.Client, id int64) (str
 	return "", fmt.Errorf("private key id %d not found", id)
 }
 
-// githubAppToModel merges the API object with prior state; secrets Coolify
-// truly never echoes (client_secret, webhook_secret, client_id when hidden)
-// are preserved from configuration. private_key_uuid is NOT one of those —
-// GithubApp.$hidden only covers the two secrets, so private_key_id is always
-// present on the response and is resolved to its uuid here on every
-// Create/Read/Update/Import, keeping state accurate instead of trusting
-// whatever was last configured (which is what left it permanently null after
-// import, triggering an update on every apply — see the PATCH comment in
-// Update). Resolution failure downgrades to a warning and keeps the prior
-// value, consistent with keepPriorIfHidden's null-preserving philosophy.
+// githubAppToModel merges the API object with prior state. client_id,
+// client_secret and webhook_secret all follow keepPriorIfHidden: Coolify
+// echoes them (client_secret/webhook_secret only to a token with the
+// read:sensitive ability — confirmed live: GithubApp.$hidden is overridden
+// per-request by removeSensitiveData()'s makeVisible() call), so state
+// adopts the real value when the token can see it and otherwise falls back
+// to whatever was last configured — same treatment as every other sensitive
+// field in this provider. private_key_uuid gets no such fallback: it isn't
+// hidden at all, private_key_id is always present on the response and is
+// resolved to its uuid here on every Create/Read/Update/Import, keeping
+// state accurate instead of trusting whatever was last configured (which is
+// what left it permanently null after import, triggering an update on every
+// apply — see the PATCH comment in Update). Resolution failure downgrades to
+// a warning and keeps the prior value, consistent with keepPriorIfHidden's
+// null-preserving philosophy.
 func (r *githubAppResource) githubAppToModel(ctx context.Context, a *client.GithubApp, prior githubAppResourceModel) (githubAppResourceModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	m := prior
@@ -309,6 +323,8 @@ func (r *githubAppResource) githubAppToModel(ctx context.Context, a *client.Gith
 	m.AppID = types.Int64Value(a.AppID)
 	m.InstallationID = types.Int64Value(a.InstallationID)
 	m.ClientID = keepPriorIfHidden(a.ClientID, prior.ClientID)
+	m.ClientSecret = keepPriorIfHidden(a.ClientSecret, prior.ClientSecret)
+	m.WebhookSecret = keepPriorIfHidden(a.WebhookSecret, prior.WebhookSecret)
 	m.IsSystemWide = types.BoolValue(a.IsSystemWide)
 
 	if uuid, err := resolvePrivateKeyUUID(ctx, r.client, a.PrivateKeyID); err != nil {

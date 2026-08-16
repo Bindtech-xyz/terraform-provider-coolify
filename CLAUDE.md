@@ -51,7 +51,14 @@ Deliberate design choices (do not "fix" these):
   whatever was last configured, which is what used to leave the field
   permanently null after import and trigger an update — hence this 422 — on
   every single apply. Changing the private key for real still 422s until
-  upstream fixes the validator.
+  upstream fixes the validator. `client_secret`/`webhook_secret` are
+  `Optional`+`Computed` (not `Required`): confirmed live that Coolify echoes them in
+  full to any token with `read:sensitive` (`GithubApp.$hidden` is overridden
+  per-request by `removeSensitiveData()`'s `makeVisible()`), so `keepPriorIfHidden`
+  adopts the real value on import instead of forcing a required-but-unobtainable
+  config value — a plain `terraform import` is fully clean with no attribute to stash
+  in a vault first. A token without `read:sensitive` still falls back to whatever was
+  configured, same as every other sensitive field.
 - Deletes of applications/databases/services/destinations call
   `client.waitForDeletion` (poll until 404, backoff 500ms→5s) because Coolify tears
   down asynchronously; without it, destroy-then-recreate collides on held
@@ -143,10 +150,17 @@ Patterns the existing code relies on — keep them when adding objects:
 - **Null-preserving mapping**: API normalises absent strings to `""`; `xToModel`
   functions keep the attribute null if it was null in prior state/config (helpers
   `keepNullIfEmpty` / `keepPriorIfHidden` in `helpers.go`) to avoid permanent diffs.
-  Write-only attributes the API never echoes (e.g. `private_key_uuid`) are carried over
-  from prior state. Sensitive fields (db credentials, env-var values, S3 keys) are only
-  echoed to tokens with the `read:sensitive` ability — `keepPriorIfHidden` covers both
-  cases.
+  Write-only attributes the API never echoes (e.g. `coolify_cloud_init_script.script`)
+  are carried over from prior state. Sensitive fields (db credentials, env-var values,
+  S3 keys, `coolify_github_app.client_secret`/`webhook_secret`) are only echoed to
+  tokens with the `read:sensitive` ability — `keepPriorIfHidden` covers both cases.
+  Don't assume a field is write-only just because a Laravel model's `$hidden` lists it:
+  `$hidden` is commonly overridden per-request (`makeVisible()` gated on
+  `read:sensitive`, as `GithubController::removeSensitiveData()` does) — confirm
+  against a real response, not the model source alone, before treating a field as
+  never-echoed (found live: `coolify_github_app.client_secret`/`webhook_secret` were
+  wrongly assumed write-only and hardcoded `Required`, until a `read:sensitive` token
+  showed they come back in full).
 - Computed-once attributes (`uuid`) get `stringplanmodifier.UseStateForUnknown()`.
 - Every resource implements `ImportState` (passthrough on `uuid`, not `id`).
 - Interface-conformance `var _ resource.Resource = ...` guards top each file.
