@@ -23,6 +23,26 @@ run `task bugs:ship` / tag a new version unless explicitly asked to.** Instead:
 Only once told to actually ship: merge `dev` into `main` (`git checkout main &&
 git merge dev`), then follow the TL;DR below as normal.
 
+### `dev_overrides` key must match the consumer's source string exactly
+
+`~/.tofurc`/`~/.terraformrc`'s `dev_overrides` key must be **fully qualified**
+(`registry.terraform.io/bindtech-xyz/coolify`) whenever the consumer's
+`required_providers.coolify.source` is fully qualified too — which
+`/projects/contabo/tofu/versions.tf` is, on purpose, because this provider isn't
+published on `registry.opentofu.org` (see that file's own comment). A short key
+(`bindtech-xyz/coolify`) does **not** match a fully-qualified source: the CLI falls
+back silently to whatever's in `.terraform/providers/` (a real published version
+pinned by the lock file) instead of erroring.
+
+This failure mode is nearly invisible: "Provider development overrides are in
+effect" still prints on every plan, because it only reports that overrides are
+*configured*, not that they were *applied* to this provider. A fix built and
+`go install`ed can look like it did nothing for several round-trips before anyone
+thinks to doubt the override itself (this happened live — three exchanges of "still
+broken" before the mismatched key was found). To confirm the override is actually
+being used: move the `~/go/bin` binary aside and re-run `plan` — if it still works,
+the override isn't being hit.
+
 ## TL;DR (once actually asked to release)
 
 ```sh

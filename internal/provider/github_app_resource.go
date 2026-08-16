@@ -98,8 +98,12 @@ func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required:            true,
 			},
 			"client_id": schema.StringAttribute{
-				MarkdownDescription: "OAuth client id of the App.",
-				Required:            true,
+				MarkdownDescription: "OAuth client id of the App. Required to create it via this " +
+					"provider; not sensitive, so it's always adopted from Coolify — doesn't need to " +
+					"be supplied for an imported App.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"client_secret": schema.StringAttribute{
 				MarkdownDescription: "OAuth client secret of the App. Required to create it via " +

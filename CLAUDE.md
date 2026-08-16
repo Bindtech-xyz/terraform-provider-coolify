@@ -51,13 +51,15 @@ Deliberate design choices (do not "fix" these):
   whatever was last configured, which is what used to leave the field
   permanently null after import and trigger an update — hence this 422 — on
   every single apply. Changing the private key for real still 422s until
-  upstream fixes the validator. `client_secret`/`webhook_secret` are
-  `Optional`+`Computed` (not `Required`): confirmed live that Coolify echoes them in
-  full to any token with `read:sensitive` (`GithubApp.$hidden` is overridden
-  per-request by `removeSensitiveData()`'s `makeVisible()`), so `keepPriorIfHidden`
-  adopts the real value on import instead of forcing a required-but-unobtainable
-  config value — a plain `terraform import` is fully clean with no attribute to stash
-  in a vault first. A token without `read:sensitive` still falls back to whatever was
+  upstream fixes the validator. `client_id`/`client_secret`/`webhook_secret` are
+  `Optional`+`Computed` (not `Required`): confirmed live that Coolify echoes
+  `client_secret`/`webhook_secret` in full to any token with `read:sensitive`
+  (`GithubApp.$hidden` is overridden per-request by `removeSensitiveData()`'s
+  `makeVisible()`) and `client_id` unconditionally (never sensitive), so
+  `keepPriorIfHidden` adopts the real values on import instead of forcing
+  required-but-unobtainable config values — a plain `terraform import` is fully
+  clean, nothing to stash in a vault first. A token without `read:sensitive` still
+  falls back to whatever was
   configured, same as every other sensitive field.
 - Deletes of applications/databases/services/destinations call
   `client.waitForDeletion` (poll until 404, backoff 500ms→5s) because Coolify tears
