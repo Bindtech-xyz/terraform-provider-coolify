@@ -55,6 +55,19 @@ type Database struct {
 	LimitsCPUSet            string `json:"limits_cpuset"`
 	LimitsCPUShares         int64  `json:"limits_cpu_shares"`
 
+	// Health check — all 5 columns are integers except HealthCheckEnabled
+	// (confirmed against the `add_health_check_to_standalone_databases`
+	// migration, applied to all 8 engine tables identically). Unlike every
+	// other database field, these are update-only: absent from every create
+	// endpoint's $allowedFields (confirmed against the controller source —
+	// only merged into update_by_uuid's), so DatabaseRequest must never carry
+	// them on create.
+	HealthCheckEnabled     bool  `json:"health_check_enabled"`
+	HealthCheckInterval    int64 `json:"health_check_interval"`
+	HealthCheckTimeout     int64 `json:"health_check_timeout"`
+	HealthCheckRetries     int64 `json:"health_check_retries"`
+	HealthCheckStartPeriod int64 `json:"health_check_start_period"`
+
 	// PostgreSQL.
 	PostgresUser           string `json:"postgres_user"`
 	PostgresPassword       string `json:"postgres_password"`
@@ -121,6 +134,14 @@ type DatabaseRequest struct {
 	LimitsMemoryReservation *string `json:"limits_memory_reservation,omitempty"`
 	LimitsCPUSet            *string `json:"limits_cpuset,omitempty"`
 	LimitsCPUShares         *int64  `json:"limits_cpu_shares,omitempty"`
+
+	// Health check — update-only, see the note on client.Database. Callers
+	// must never set these when create is true.
+	HealthCheckEnabled     *bool  `json:"health_check_enabled,omitempty"`
+	HealthCheckInterval    *int64 `json:"health_check_interval,omitempty"`
+	HealthCheckTimeout     *int64 `json:"health_check_timeout,omitempty"`
+	HealthCheckRetries     *int64 `json:"health_check_retries,omitempty"`
+	HealthCheckStartPeriod *int64 `json:"health_check_start_period,omitempty"`
 
 	// PostgreSQL.
 	PostgresUser           *string `json:"postgres_user,omitempty"`

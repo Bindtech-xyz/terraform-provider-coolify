@@ -58,7 +58,22 @@ Deliberate design choices (do not "fix" these):
   against the real `$allowedFields`, not the misleading per-endpoint OpenAPI
   annotations — see the `dockerfile_location` entry above for how that trap looks).
   `Optional`+`Computed`+`Sensitive`, `keepPriorIfHidden` (same `$hidden`-but-only-
-  behind-`read:sensitive` treatment as `coolify_github_app.client_secret`).
+  behind-`read:sensitive` treatment as `coolify_github_app.client_secret`). All 14
+  `health_check_*` fields are exposed (was 2 of 14 — `enabled`/`path` only, and
+  neither was even read back from the API, so drift on either went undetected the
+  same way `coolify_database`'s pre-fix `limits_memory`/`limits_cpus` did); confirmed
+  symmetric on both create and update, so sent unconditionally.
+  `health_check_return_code`/`interval`/`timeout`/`retries`/`start_period` are
+  genuine integer columns (confirmed against the migration), same split as the
+  `limits_*` fields. `health_check_port`/`response_text`/`command` are genuinely
+  nullable with no server-side default (confirmed against the model source: plain
+  `$fillable`, no mutator) — `keepNullIfEmpty`, not `Computed`, unlike every other
+  `health_check_*` field. `health_check_start_period` is the field that lets a
+  slow-starting container (e.g. one running migrations before serving traffic)
+  survive its own startup instead of being killed as unhealthy;
+  `health_check_command` (with `health_check_type = "cmd"`) is what makes a
+  probe-less image (no `curl`/`wget` — distroless, scratch, Bun) deployable at all,
+  since Coolify's default HTTP probe hard-requires one of them inside the container.
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are
   sent, on ALL of them at once regardless of which single attribute the update
@@ -90,7 +105,17 @@ Deliberate design choices (do not "fix" these):
   the whole response, so this distinction is load-bearing, not cosmetic.
   `coolify_application` carries the identical five extended `limits_*` fields with
   the identical int64-vs-string split, for the same reason (confirmed against its own
-  migration).
+  migration). Databases also gained a 5-field `health_check_*` probe
+  (`enabled`/`interval`/`timeout`/`retries`/`start_period`, all integer columns except
+  `enabled` — added by a dedicated migration across all 8 engine tables identically,
+  much newer than the application-side one) but, unlike `coolify_application`'s 14
+  `health_check_*` fields, these are update-only: merged into
+  `update_by_uuid`'s `$allowedFields` but absent from every create endpoint's
+  (confirmed against the controller source) — same asymmetric-whitelist shape as
+  `coolify_application.dockerfile_target_build`, and the same fix:
+  `databaseToRequest` sends them only when `!create`, `Create()` applies a configured
+  value via a follow-up `UpdateDatabase` call (warning, not error, on failure — same
+  reasoning as the application-side follow-up).
 - `coolify_service.type` is intentionally NOT validated against a static enum — the
   one-click catalog (300+ templates) evolves with Coolify. `coolify_service_templates`
   fetches the live CDN feed (`client.DefaultServiceTemplatesURL`) for discovery.
@@ -274,22 +299,24 @@ attach (`coolify_resource_tag`) but matched *exactly* (case-sensitive) on deploy
 compensate; don't remove either normalization.
 
 Watch for divergent `$allowedFields` whitelists between an object's create and update
-controller methods — found three times so far, all reported live by the same consumer
-against 4.3.2, all real upstream regressions rather than intentional immutability:
+controller methods — found four times so far, all reported live by the same consumer
+against 4.3.x, all real upstream regressions rather than intentional immutability:
 `GithubController::update()` validates `private_key_uuid` with Laravel's `uuid` rule
 (RFC 4122) against Coolify's own nanoid ids; `ApplicationsController::update_by_uuid`
 drops `dockerfile` from its whitelist outright while `store()` requires it on create;
-and the same method's whitelist *adds* `dockerfile_target_build`, which no create
-endpoint accepts at all — the mismatch runs both directions, not just
-create-only-missing-from-update. None have an upstream issue filed yet as of this
-writing. The provider-side mitigation shape depends on which direction the field is
-missing from: never send it on `PATCH` at all, either by comparing against state (the
-field is legitimately still updatable in principle, e.g. `private_key_uuid`) or with
-`RequiresReplace()` (genuinely create-only, e.g. `dockerfile`) — or never send it on
-`POST`, applying a configured value via a follow-up `PATCH` right after create instead
-(update-only, e.g. `dockerfile_target_build`). Don't assume any other object's
-create/update field lists actually match without checking both controller methods
-directly.
+the same method's whitelist *adds* `dockerfile_target_build`, which no create endpoint
+accepts at all; and `DatabasesController::update_by_uuid` merges in a 5-field
+`health_check_*` group that no create endpoint accepts either — the mismatch runs both
+directions, not just create-only-missing-from-update. None have an upstream issue
+filed yet as of this writing. The provider-side mitigation shape depends on which
+direction the field is missing from: never send it on `PATCH` at all, either by
+comparing against state (the field is legitimately still updatable in principle, e.g.
+`private_key_uuid`) or with `RequiresReplace()` (genuinely create-only, e.g.
+`dockerfile`) — or never send it on `POST`, applying a configured value via a
+follow-up `PATCH` right after create instead (update-only, e.g.
+`dockerfile_target_build`, `coolify_database`'s `health_check_*`). Don't assume any
+other object's create/update field lists actually match without checking both
+controller methods directly.
 
 ## CI / Releases
 

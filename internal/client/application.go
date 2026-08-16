@@ -68,9 +68,29 @@ type Application struct {
 	ManualWebhookSecretGitlab    string `json:"manual_webhook_secret_gitlab"`
 	ManualWebhookSecretBitbucket string `json:"manual_webhook_secret_bitbucket"`
 	ManualWebhookSecretGitea     string `json:"manual_webhook_secret_gitea"`
-	Status                       string `json:"status"`
-	EnvironmentID                int64  `json:"environment_id"`
-	DestinationID                int64  `json:"destination_id"`
+
+	// Health check. HealthCheckReturnCode/Interval/Timeout/Retries/StartPeriod
+	// are genuine integer columns (confirmed against the migration), like
+	// limits_memory_swappiness/limits_cpu_shares above; every other
+	// health_check_* field is a string column.
+	HealthCheckEnabled      bool   `json:"health_check_enabled"`
+	HealthCheckPath         string `json:"health_check_path"`
+	HealthCheckPort         string `json:"health_check_port"`
+	HealthCheckHost         string `json:"health_check_host"`
+	HealthCheckMethod       string `json:"health_check_method"`
+	HealthCheckReturnCode   int64  `json:"health_check_return_code"`
+	HealthCheckScheme       string `json:"health_check_scheme"`
+	HealthCheckResponseText string `json:"health_check_response_text"`
+	HealthCheckInterval     int64  `json:"health_check_interval"`
+	HealthCheckTimeout      int64  `json:"health_check_timeout"`
+	HealthCheckRetries      int64  `json:"health_check_retries"`
+	HealthCheckStartPeriod  int64  `json:"health_check_start_period"`
+	HealthCheckType         string `json:"health_check_type"`
+	HealthCheckCommand      string `json:"health_check_command"`
+
+	Status        string `json:"status"`
+	EnvironmentID int64  `json:"environment_id"`
+	DestinationID int64  `json:"destination_id"`
 }
 
 // ApplicationRequest is the union body for the five create endpoints and for
@@ -149,9 +169,20 @@ type ApplicationRequest struct {
 	InstantDeploy               *bool `json:"instant_deploy,omitempty"`
 
 	// Health check.
-	HealthCheckEnabled *bool   `json:"health_check_enabled,omitempty"`
-	HealthCheckPath    *string `json:"health_check_path,omitempty"`
-	HealthCheckPort    *string `json:"health_check_port,omitempty"`
+	HealthCheckEnabled      *bool   `json:"health_check_enabled,omitempty"`
+	HealthCheckPath         *string `json:"health_check_path,omitempty"`
+	HealthCheckPort         *string `json:"health_check_port,omitempty"`
+	HealthCheckHost         *string `json:"health_check_host,omitempty"`
+	HealthCheckMethod       *string `json:"health_check_method,omitempty"`
+	HealthCheckReturnCode   *int64  `json:"health_check_return_code,omitempty"`
+	HealthCheckScheme       *string `json:"health_check_scheme,omitempty"`
+	HealthCheckResponseText *string `json:"health_check_response_text,omitempty"`
+	HealthCheckInterval     *int64  `json:"health_check_interval,omitempty"`
+	HealthCheckTimeout      *int64  `json:"health_check_timeout,omitempty"`
+	HealthCheckRetries      *int64  `json:"health_check_retries,omitempty"`
+	HealthCheckStartPeriod  *int64  `json:"health_check_start_period,omitempty"`
+	HealthCheckType         *string `json:"health_check_type,omitempty"`
+	HealthCheckCommand      *string `json:"health_check_command,omitempty"`
 
 	// Limits.
 	LimitsMemory            *string `json:"limits_memory,omitempty"`

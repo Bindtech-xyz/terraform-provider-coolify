@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -63,6 +64,13 @@ type databaseResourceModel struct {
 	LimitsMemoryReservation types.String `tfsdk:"limits_memory_reservation"`
 	LimitsCPUSet            types.String `tfsdk:"limits_cpuset"`
 	LimitsCPUShares         types.Int64  `tfsdk:"limits_cpu_shares"`
+
+	// Health check.
+	HealthCheckEnabled     types.Bool  `tfsdk:"health_check_enabled"`
+	HealthCheckInterval    types.Int64 `tfsdk:"health_check_interval"`
+	HealthCheckTimeout     types.Int64 `tfsdk:"health_check_timeout"`
+	HealthCheckRetries     types.Int64 `tfsdk:"health_check_retries"`
+	HealthCheckStartPeriod types.Int64 `tfsdk:"health_check_start_period"`
 
 	// PostgreSQL.
 	PostgresUser           types.String `tfsdk:"postgres_user"`
@@ -261,6 +269,47 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 
+			// Health check. Update-only on Coolify's API (confirmed against the
+			// controller source — absent from every create endpoint's
+			// allowed-fields list, present only in update_by_uuid's): a
+			// configured value is applied via a follow-up UpdateDatabase call
+			// right after creating, same pattern as
+			// coolify_application.dockerfile_target_build.
+			"health_check_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable the database health check probe. Coolify defaults " +
+					"unset to `true`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_interval": schema.Int64Attribute{
+				MarkdownDescription: "Seconds between probes. Coolify defaults unset to `15`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_timeout": schema.Int64Attribute{
+				MarkdownDescription: "Seconds before a probe attempt is considered failed. " +
+					"Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_retries": schema.Int64Attribute{
+				MarkdownDescription: "Consecutive failures before the database is marked " +
+					"unhealthy. Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_start_period": schema.Int64Attribute{
+				MarkdownDescription: "Grace period in seconds during which probe failures don't " +
+					"count, for a slow-starting database. Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+
 			// PostgreSQL.
 			"postgres_user":     sensitiveEngineString("PostgreSQL user (postgresql engine)."),
 			"postgres_password": sensitiveEngineString("PostgreSQL password (postgresql engine)."),
@@ -390,8 +439,27 @@ func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequ
 		req.ServerUUID = stringOrNil(m.ServerUUID)
 		req.DestinationUUID = stringOrNil(m.DestinationUUID)
 		req.InstantDeploy = boolOrNil(m.InstantDeploy)
+	} else {
+		// Health check fields are update-only: absent from every create
+		// endpoint's allowed-fields list (confirmed against the controller
+		// source), so they can only ever be sent on update — Create() applies
+		// a configured value via a follow-up UpdateDatabase call instead.
+		req.HealthCheckEnabled = boolOrNil(m.HealthCheckEnabled)
+		req.HealthCheckInterval = int64OrNil(m.HealthCheckInterval)
+		req.HealthCheckTimeout = int64OrNil(m.HealthCheckTimeout)
+		req.HealthCheckRetries = int64OrNil(m.HealthCheckRetries)
+		req.HealthCheckStartPeriod = int64OrNil(m.HealthCheckStartPeriod)
 	}
 	return req
+}
+
+// databaseHasConfiguredHealthCheck reports whether any health check
+// attribute was configured — used by Create() to decide whether the
+// update-only follow-up PATCH is needed at all.
+func databaseHasConfiguredHealthCheck(m databaseResourceModel) bool {
+	return !m.HealthCheckEnabled.IsNull() || !m.HealthCheckInterval.IsNull() ||
+		!m.HealthCheckTimeout.IsNull() || !m.HealthCheckRetries.IsNull() ||
+		!m.HealthCheckStartPeriod.IsNull()
 }
 
 func (r *databaseResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -417,6 +485,32 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 			err.Error(),
 		)
 		return
+	}
+
+	if databaseHasConfiguredHealthCheck(plan) {
+		// See databaseToRequest: no create endpoint accepts health check
+		// fields, so a configured value needs a follow-up PATCH to actually
+		// take effect. Failure here downgrades to a warning rather than an
+		// error — the database itself was created successfully and must not
+		// be orphaned (untracked in state) over these fields; Read will
+		// simply show them still drifted, prompting a normal Update on the
+		// next apply.
+		updated, err := r.client.UpdateDatabase(ctx, db.UUID, client.DatabaseRequest{
+			HealthCheckEnabled:     boolOrNil(plan.HealthCheckEnabled),
+			HealthCheckInterval:    int64OrNil(plan.HealthCheckInterval),
+			HealthCheckTimeout:     int64OrNil(plan.HealthCheckTimeout),
+			HealthCheckRetries:     int64OrNil(plan.HealthCheckRetries),
+			HealthCheckStartPeriod: int64OrNil(plan.HealthCheckStartPeriod),
+		})
+		if err != nil {
+			resp.Diagnostics.AddWarning(
+				fmt.Sprintf("Database %s created, but its health check could not be applied", db.UUID),
+				fmt.Sprintf("The database was created successfully, but the follow-up update to set "+
+					"the health check fields failed: %s. Re-run apply to retry.", err),
+			)
+		} else {
+			db = updated
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, databaseToModel(db, plan))...)
@@ -541,6 +635,11 @@ func databaseToModel(d *client.Database, prior databaseResourceModel) databaseRe
 	m.LimitsMemoryReservation = types.StringValue(d.LimitsMemoryReservation)
 	m.LimitsCPUSet = types.StringValue(d.LimitsCPUSet)
 	m.LimitsCPUShares = types.Int64Value(d.LimitsCPUShares)
+	m.HealthCheckEnabled = types.BoolValue(d.HealthCheckEnabled)
+	m.HealthCheckInterval = types.Int64Value(d.HealthCheckInterval)
+	m.HealthCheckTimeout = types.Int64Value(d.HealthCheckTimeout)
+	m.HealthCheckRetries = types.Int64Value(d.HealthCheckRetries)
+	m.HealthCheckStartPeriod = types.Int64Value(d.HealthCheckStartPeriod)
 	m.Description = keepNullIfEmpty(d.Description, prior.Description)
 	if d.PublicPort != nil {
 		m.PublicPort = types.Int64Value(*d.PublicPort)

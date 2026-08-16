@@ -156,3 +156,49 @@ func TestDatabaseToRequestSendsExtendedLimits(t *testing.T) {
 		}
 	}
 }
+
+// TestDatabaseToRequestHealthCheckUpdateOnly locks in the same class of bug
+// as coolify_application's dockerfile_target_build: Coolify's health check
+// fields on a database are accepted by update_by_uuid but absent from every
+// create endpoint's allowed-fields list (confirmed against the controller
+// source and the add_health_check_to_standalone_databases migration, which
+// only wired these columns into update, not create). databaseToRequest must
+// send them only when !create; Create() applies a configured value via a
+// follow-up UpdateDatabase call instead.
+func TestDatabaseToRequestHealthCheckUpdateOnly(t *testing.T) {
+	model := databaseResourceModel{
+		Engine:                 types.StringValue("postgresql"),
+		HealthCheckEnabled:     types.BoolValue(true),
+		HealthCheckInterval:    types.Int64Value(15),
+		HealthCheckTimeout:     types.Int64Value(5),
+		HealthCheckRetries:     types.Int64Value(5),
+		HealthCheckStartPeriod: types.Int64Value(5),
+	}
+
+	create := databaseToRequest(model, true)
+	if create.HealthCheckEnabled != nil || create.HealthCheckInterval != nil ||
+		create.HealthCheckTimeout != nil || create.HealthCheckRetries != nil ||
+		create.HealthCheckStartPeriod != nil {
+		t.Errorf("create request must never include health check fields, got %+v", create)
+	}
+
+	update := databaseToRequest(model, false)
+	if update.HealthCheckEnabled == nil || !*update.HealthCheckEnabled ||
+		update.HealthCheckInterval == nil || *update.HealthCheckInterval != 15 ||
+		update.HealthCheckTimeout == nil || *update.HealthCheckTimeout != 5 ||
+		update.HealthCheckRetries == nil || *update.HealthCheckRetries != 5 ||
+		update.HealthCheckStartPeriod == nil || *update.HealthCheckStartPeriod != 5 {
+		t.Errorf("update request must include health check fields, got %+v", update)
+	}
+}
+
+// TestDatabaseHasConfiguredHealthCheck covers the helper Create() uses to
+// decide whether the update-only follow-up PATCH is needed at all.
+func TestDatabaseHasConfiguredHealthCheck(t *testing.T) {
+	if databaseHasConfiguredHealthCheck(databaseResourceModel{}) {
+		t.Error("no health check attributes configured must report false")
+	}
+	if !databaseHasConfiguredHealthCheck(databaseResourceModel{HealthCheckRetries: types.Int64Value(3)}) {
+		t.Error("a single configured health check attribute must report true")
+	}
+}

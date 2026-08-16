@@ -174,3 +174,47 @@ func TestApplicationToRequestManualWebhookSecretsSentBothWays(t *testing.T) {
 		}
 	}
 }
+
+// TestApplicationToRequestHealthCheckSentBothWays confirms all 14
+// health_check_* fields have no create/update whitelist mismatch (confirmed
+// against the controller source — present in both allowed-fields lists), so
+// they belong in the base request, sent unconditionally.
+func TestApplicationToRequestHealthCheckSentBothWays(t *testing.T) {
+	model := applicationResourceModel{
+		Name:                    types.StringValue("api"),
+		HealthCheckEnabled:      types.BoolValue(true),
+		HealthCheckPath:         types.StringValue("/health"),
+		HealthCheckPort:         types.StringValue("8080"),
+		HealthCheckHost:         types.StringValue("127.0.0.1"),
+		HealthCheckMethod:       types.StringValue("GET"),
+		HealthCheckReturnCode:   types.Int64Value(200),
+		HealthCheckScheme:       types.StringValue("http"),
+		HealthCheckResponseText: types.StringValue("ok"),
+		HealthCheckInterval:     types.Int64Value(30),
+		HealthCheckTimeout:      types.Int64Value(10),
+		HealthCheckRetries:      types.Int64Value(3),
+		HealthCheckStartPeriod:  types.Int64Value(120),
+		HealthCheckType:         types.StringValue("cmd"),
+		HealthCheckCommand:      types.StringValue("wget -q -O- localhost/health"),
+	}
+
+	for _, create := range []bool{true, false} {
+		req := applicationToRequest(model, create)
+		if req.HealthCheckEnabled == nil || !*req.HealthCheckEnabled ||
+			req.HealthCheckPath == nil || *req.HealthCheckPath != "/health" ||
+			req.HealthCheckPort == nil || *req.HealthCheckPort != "8080" ||
+			req.HealthCheckHost == nil || *req.HealthCheckHost != "127.0.0.1" ||
+			req.HealthCheckMethod == nil || *req.HealthCheckMethod != "GET" ||
+			req.HealthCheckReturnCode == nil || *req.HealthCheckReturnCode != 200 ||
+			req.HealthCheckScheme == nil || *req.HealthCheckScheme != "http" ||
+			req.HealthCheckResponseText == nil || *req.HealthCheckResponseText != "ok" ||
+			req.HealthCheckInterval == nil || *req.HealthCheckInterval != 30 ||
+			req.HealthCheckTimeout == nil || *req.HealthCheckTimeout != 10 ||
+			req.HealthCheckRetries == nil || *req.HealthCheckRetries != 3 ||
+			req.HealthCheckStartPeriod == nil || *req.HealthCheckStartPeriod != 120 ||
+			req.HealthCheckType == nil || *req.HealthCheckType != "cmd" ||
+			req.HealthCheckCommand == nil || *req.HealthCheckCommand != "wget -q -O- localhost/health" {
+			t.Errorf("health check fields must be sent regardless of create=%v, got %+v", create, req)
+		}
+	}
+}

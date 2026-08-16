@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -99,8 +100,20 @@ type applicationResourceModel struct {
 	InstantDeploy               types.Bool `tfsdk:"instant_deploy"`
 
 	// Health check.
-	HealthCheckEnabled types.Bool   `tfsdk:"health_check_enabled"`
-	HealthCheckPath    types.String `tfsdk:"health_check_path"`
+	HealthCheckEnabled      types.Bool   `tfsdk:"health_check_enabled"`
+	HealthCheckPath         types.String `tfsdk:"health_check_path"`
+	HealthCheckPort         types.String `tfsdk:"health_check_port"`
+	HealthCheckHost         types.String `tfsdk:"health_check_host"`
+	HealthCheckMethod       types.String `tfsdk:"health_check_method"`
+	HealthCheckReturnCode   types.Int64  `tfsdk:"health_check_return_code"`
+	HealthCheckScheme       types.String `tfsdk:"health_check_scheme"`
+	HealthCheckResponseText types.String `tfsdk:"health_check_response_text"`
+	HealthCheckInterval     types.Int64  `tfsdk:"health_check_interval"`
+	HealthCheckTimeout      types.Int64  `tfsdk:"health_check_timeout"`
+	HealthCheckRetries      types.Int64  `tfsdk:"health_check_retries"`
+	HealthCheckStartPeriod  types.Int64  `tfsdk:"health_check_start_period"`
+	HealthCheckType         types.String `tfsdk:"health_check_type"`
+	HealthCheckCommand      types.String `tfsdk:"health_check_command"`
 
 	// Limits.
 	LimitsMemory types.String `tfsdk:"limits_memory"`
@@ -404,12 +417,95 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 
 			// Health check.
 			"health_check_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable the container health check.",
-				Optional:            true,
+				MarkdownDescription: "Enable the container health check. Coolify defaults unset " +
+					"to `false`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"health_check_path": schema.StringAttribute{
-				MarkdownDescription: "HTTP path probed by the health check (e.g. `/health`).",
+				MarkdownDescription: "HTTP path probed by the health check (e.g. `/health`). " +
+					"Coolify defaults unset to `/`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_port": schema.StringAttribute{
+				MarkdownDescription: "Port probed by the health check, if different from the " +
+					"container's exposed port.",
+				Optional: true,
+			},
+			"health_check_host": schema.StringAttribute{
+				MarkdownDescription: "Host probed by the health check. Coolify defaults unset to " +
+					"`localhost`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_method": schema.StringAttribute{
+				MarkdownDescription: "HTTP method used by the health check. Coolify defaults " +
+					"unset to `GET`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_return_code": schema.Int64Attribute{
+				MarkdownDescription: "Expected HTTP status code. Coolify defaults unset to `200`.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_scheme": schema.StringAttribute{
+				MarkdownDescription: "`http` or `https`. Coolify defaults unset to `http`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_response_text": schema.StringAttribute{
+				MarkdownDescription: "Substring expected in the response body, if any.",
+				Optional:            true,
+			},
+			"health_check_interval": schema.Int64Attribute{
+				MarkdownDescription: "Seconds between probes. Coolify defaults unset to `5`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_timeout": schema.Int64Attribute{
+				MarkdownDescription: "Seconds before a probe attempt is considered failed. " +
+					"Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_retries": schema.Int64Attribute{
+				MarkdownDescription: "Consecutive failures before the container is marked " +
+					"unhealthy. Coolify defaults unset to `10`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_start_period": schema.Int64Attribute{
+				MarkdownDescription: "Grace period in seconds during which probe failures don't " +
+					"count, for a slow-starting container (e.g. one that runs database " +
+					"migrations before serving traffic). Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_type": schema.StringAttribute{
+				MarkdownDescription: "`http` (probe an HTTP endpoint) or `cmd` (run " +
+					"`health_check_command` inside the container). Coolify defaults unset to `http`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_command": schema.StringAttribute{
+				MarkdownDescription: "Command run inside the container for `health_check_type = " +
+					"\"cmd\"`. Required for images without `curl`/`wget` (Coolify's default HTTP " +
+					"probe needs one of them and refuses to start otherwise) — e.g. a distroless, " +
+					"scratch, or Bun image can use whatever it already ships.",
+				Optional: true,
 			},
 
 			// Limits.
@@ -559,6 +655,18 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		InstantDeploy:                boolOrNil(m.InstantDeploy),
 		HealthCheckEnabled:           boolOrNil(m.HealthCheckEnabled),
 		HealthCheckPath:              stringOrNil(m.HealthCheckPath),
+		HealthCheckPort:              stringOrNil(m.HealthCheckPort),
+		HealthCheckHost:              stringOrNil(m.HealthCheckHost),
+		HealthCheckMethod:            stringOrNil(m.HealthCheckMethod),
+		HealthCheckReturnCode:        int64OrNil(m.HealthCheckReturnCode),
+		HealthCheckScheme:            stringOrNil(m.HealthCheckScheme),
+		HealthCheckResponseText:      stringOrNil(m.HealthCheckResponseText),
+		HealthCheckInterval:          int64OrNil(m.HealthCheckInterval),
+		HealthCheckTimeout:           int64OrNil(m.HealthCheckTimeout),
+		HealthCheckRetries:           int64OrNil(m.HealthCheckRetries),
+		HealthCheckStartPeriod:       int64OrNil(m.HealthCheckStartPeriod),
+		HealthCheckType:              stringOrNil(m.HealthCheckType),
+		HealthCheckCommand:           stringOrNil(m.HealthCheckCommand),
 		LimitsMemory:                 stringOrNil(m.LimitsMemory),
 		LimitsCPUs:                   stringOrNil(m.LimitsCPUs),
 		LimitsMemorySwap:             stringOrNil(m.LimitsMemorySwap),
@@ -742,6 +850,25 @@ func applicationToModel(a *client.Application, prior applicationResourceModel) a
 	m.ManualWebhookSecretGitlab = keepPriorIfHidden(a.ManualWebhookSecretGitlab, prior.ManualWebhookSecretGitlab)
 	m.ManualWebhookSecretBitbucket = keepPriorIfHidden(a.ManualWebhookSecretBitbucket, prior.ManualWebhookSecretBitbucket)
 	m.ManualWebhookSecretGitea = keepPriorIfHidden(a.ManualWebhookSecretGitea, prior.ManualWebhookSecretGitea)
+	// Computed, Coolify defaults each unset to a non-empty/non-zero value:
+	// adopt directly, no null-preservation.
+	m.HealthCheckEnabled = types.BoolValue(a.HealthCheckEnabled)
+	m.HealthCheckPath = types.StringValue(a.HealthCheckPath)
+	m.HealthCheckHost = types.StringValue(a.HealthCheckHost)
+	m.HealthCheckMethod = types.StringValue(a.HealthCheckMethod)
+	m.HealthCheckReturnCode = types.Int64Value(a.HealthCheckReturnCode)
+	m.HealthCheckScheme = types.StringValue(a.HealthCheckScheme)
+	m.HealthCheckInterval = types.Int64Value(a.HealthCheckInterval)
+	m.HealthCheckTimeout = types.Int64Value(a.HealthCheckTimeout)
+	m.HealthCheckRetries = types.Int64Value(a.HealthCheckRetries)
+	m.HealthCheckStartPeriod = types.Int64Value(a.HealthCheckStartPeriod)
+	m.HealthCheckType = types.StringValue(a.HealthCheckType)
+	// Genuinely nullable, no server-side default (confirmed against the
+	// migration and model source: plain fillable, no mutator/booted default):
+	// null-preserve instead.
+	m.HealthCheckPort = keepNullIfEmpty(a.HealthCheckPort, prior.HealthCheckPort)
+	m.HealthCheckResponseText = keepNullIfEmpty(a.HealthCheckResponseText, prior.HealthCheckResponseText)
+	m.HealthCheckCommand = keepNullIfEmpty(a.HealthCheckCommand, prior.HealthCheckCommand)
 	// All Computed (Coolify defaults each unset, never ""/0 by omission):
 	// adopt directly, no null-preservation — the empty/zero value never
 	// legitimately means "unconfigured" here.
