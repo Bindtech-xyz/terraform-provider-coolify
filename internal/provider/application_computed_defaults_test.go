@@ -31,6 +31,7 @@ func TestApplicationServerDefaultedAttributesAreComputed(t *testing.T) {
 	for _, name := range []string{
 		"base_directory", "limits_memory", "limits_cpus",
 		"git_branch", "git_commit_sha", "build_pack", "static_image",
+		"dockerfile_location",
 	} {
 		attr, ok := schemaResp.Schema.Attributes[name]
 		if !ok {

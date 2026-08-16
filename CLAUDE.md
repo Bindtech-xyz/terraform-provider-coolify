@@ -25,7 +25,19 @@ Deliberate design choices (do not "fix" these):
   consumer). `applicationToRequest` only sets `Dockerfile` when `create`, and the
   schema attribute carries `RequiresReplace()` so a real content change goes through
   Create+Delete instead of a PATCH that would always 422 with `"This field is not
-  allowed."` regardless of value.
+  allowed."` regardless of value. `dockerfile_target_build` has the exact opposite
+  problem: present in `update_by_uuid`'s whitelist, absent from every create
+  endpoint's — so `applicationToRequest` sends it only when `!create`, and `Create()`
+  applies a configured value via a follow-up `UpdateApplication` call right after
+  creating (downgraded to a warning on failure, not an error, so the resource is
+  never left untracked in state over this one field — the next apply's `Read` simply
+  shows it still drifted, triggering a normal `Update`). If `instant_deploy` is also
+  set, Coolify's create-triggered first build already started before that follow-up
+  PATCH lands, so only later deploys see the target stage. `dockerfile_location` has
+  no such mismatch — both endpoints accept it — so it's sent unconditionally; Coolify
+  defaults it to `/Dockerfile` when unset (confirmed live), so like `base_directory`
+  it's `Computed`, not just `Optional`, to avoid a "provider produced inconsistent
+  result" error.
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are sent;
   the client only sends non-null fields so this composes safely.
@@ -204,17 +216,22 @@ attach (`coolify_resource_tag`) but matched *exactly* (case-sensitive) on deploy
 compensate; don't remove either normalization.
 
 Watch for divergent `$allowedFields` whitelists between an object's create and update
-controller methods — found twice so far, both reported live by the same consumer
-against 4.3.2, both real upstream regressions rather than intentional immutability:
+controller methods — found three times so far, all reported live by the same consumer
+against 4.3.2, all real upstream regressions rather than intentional immutability:
 `GithubController::update()` validates `private_key_uuid` with Laravel's `uuid` rule
-(RFC 4122) against Coolify's own nanoid ids, and `ApplicationsController::update_by_uuid`
-drops `dockerfile` from its whitelist outright while `store()` requires it on create.
-Both need an upstream issue (not filed yet as of this writing); the provider-side
-mitigation is the same shape each time — never send the field on `PATCH`, either by
-comparing against state (when the field is legitimately still updatable in principle,
-e.g. `private_key_uuid`) or with `RequiresReplace()` (when it's genuinely create-only,
-e.g. `dockerfile`) — and don't assume any other object's create/update field lists
-actually match without checking both controller methods directly.
+(RFC 4122) against Coolify's own nanoid ids; `ApplicationsController::update_by_uuid`
+drops `dockerfile` from its whitelist outright while `store()` requires it on create;
+and the same method's whitelist *adds* `dockerfile_target_build`, which no create
+endpoint accepts at all — the mismatch runs both directions, not just
+create-only-missing-from-update. None have an upstream issue filed yet as of this
+writing. The provider-side mitigation shape depends on which direction the field is
+missing from: never send it on `PATCH` at all, either by comparing against state (the
+field is legitimately still updatable in principle, e.g. `private_key_uuid`) or with
+`RequiresReplace()` (genuinely create-only, e.g. `dockerfile`) — or never send it on
+`POST`, applying a configured value via a follow-up `PATCH` right after create instead
+(update-only, e.g. `dockerfile_target_build`). Don't assume any other object's
+create/update field lists actually match without checking both controller methods
+directly.
 
 ## CI / Releases
 

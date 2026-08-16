@@ -40,6 +40,7 @@ type Application struct {
 	PortsMappings           string `json:"ports_mappings"`
 	Dockerfile              string `json:"dockerfile"`
 	DockerfileLocation      string `json:"dockerfile_location"`
+	DockerfileTargetBuild   string `json:"dockerfile_target_build"`
 	DockerRegistryImageName string `json:"docker_registry_image_name"`
 	DockerRegistryImageTag  string `json:"docker_registry_image_tag"`
 	DockerComposeLocation   string `json:"docker_compose_location"`
@@ -80,7 +81,13 @@ type ApplicationRequest struct {
 	GithubAppUUID  *string `json:"github_app_uuid,omitempty"`
 
 	// Docker sources.
-	Dockerfile              *string `json:"dockerfile,omitempty"` // base64-encoded
+	Dockerfile         *string `json:"dockerfile,omitempty"` // base64-encoded, create-only (see CLAUDE.md)
+	DockerfileLocation *string `json:"dockerfile_location,omitempty"`
+	// DockerfileTargetBuild is the inverse of Dockerfile: accepted by
+	// update_by_uuid but absent from every create endpoint's allowed-fields
+	// list (confirmed against the controller source) — set it via a
+	// follow-up PATCH after create, never in the create body itself.
+	DockerfileTargetBuild   *string `json:"dockerfile_target_build,omitempty"`
 	DockerRegistryImageName *string `json:"docker_registry_image_name,omitempty"`
 	DockerRegistryImageTag  *string `json:"docker_registry_image_tag,omitempty"`
 

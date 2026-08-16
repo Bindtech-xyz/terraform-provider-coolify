@@ -108,3 +108,44 @@ func TestApplicationToRequestOmitsDockerfileOnUpdate(t *testing.T) {
 		t.Error("update request must never include dockerfile")
 	}
 }
+
+// TestApplicationToRequestDockerfileLocationSentBothWays confirms
+// dockerfile_location has no create/update whitelist mismatch (unlike
+// dockerfile and dockerfile_target_build) — Coolify accepts it on both
+// endpoints, so it belongs in the base request, sent unconditionally.
+func TestApplicationToRequestDockerfileLocationSentBothWays(t *testing.T) {
+	model := applicationResourceModel{
+		Name:               types.StringValue("api"),
+		DockerfileLocation: types.StringValue("/docker/Dockerfile.web"),
+	}
+
+	for _, create := range []bool{true, false} {
+		req := applicationToRequest(model, create)
+		if req.DockerfileLocation == nil || *req.DockerfileLocation != "/docker/Dockerfile.web" {
+			t.Errorf("dockerfile_location must be sent regardless of create=%v", create)
+		}
+	}
+}
+
+// TestApplicationToRequestDockerfileTargetBuildUpdateOnly locks in the
+// inverse whitelist mismatch from dockerfile: Coolify's create endpoints all
+// reject dockerfile_target_build (confirmed against the controller source —
+// absent from every create allowed-fields list, present only in
+// update_by_uuid's), so it must only ever be sent on update. Create() applies
+// a configured value via a follow-up UpdateApplication call instead.
+func TestApplicationToRequestDockerfileTargetBuildUpdateOnly(t *testing.T) {
+	model := applicationResourceModel{
+		Name:                  types.StringValue("api"),
+		DockerfileTargetBuild: types.StringValue("release"),
+	}
+
+	create := applicationToRequest(model, true)
+	if create.DockerfileTargetBuild != nil {
+		t.Error("create request must never include dockerfile_target_build")
+	}
+
+	update := applicationToRequest(model, false)
+	if update.DockerfileTargetBuild == nil || *update.DockerfileTargetBuild != "release" {
+		t.Error("update request must include dockerfile_target_build")
+	}
+}
