@@ -55,7 +55,10 @@ func (r *sharedEnvVarResource) Schema(_ context.Context, _ resource.SchemaReques
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "A shared environment variable, usable as `{{team.KEY}}`, " +
 			"`{{project.KEY}}`, `{{environment.KEY}}` or `{{server.KEY}}` in resources. The `scope` " +
-			"attribute selects where it lives.",
+			"attribute selects where it lives. It is **not** injected into any application's " +
+			"environment automatically — 'shared' means available for reference, not auto-applied. " +
+			"To actually inject one, reference it from a `coolify_environment_variable.value` on the " +
+			"target application (e.g. `value = \"{{project.POSTGRES_HOST}}\"`).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				MarkdownDescription: "Server-assigned numeric identifier.",

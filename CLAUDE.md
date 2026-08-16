@@ -16,7 +16,16 @@ Deliberate design choices (do not "fix" these):
 - `coolify_application` is ONE resource covering the five API create endpoints
   (public git / deploy key / GitHub App / dockerfile / docker image). The mode is
   derived from which source attributes are set (`applicationType()` in
-  `application_resource.go`), enforced by `ConfigValidators`.
+  `application_resource.go`), enforced by `ConfigValidators`. `dockerfile` is
+  create-only: `ApplicationsController::update_by_uuid`'s allowed-fields whitelist
+  omits it entirely (`dockerfile_location`/`dockerfile_target_build` are there,
+  `dockerfile` itself isn't — confirmed against the controller source; `store()`'s own
+  whitelist does include it, same divergent-whitelist defect as
+  `coolify_github_app.private_key_uuid` below, reported live against 4.3.2 by the same
+  consumer). `applicationToRequest` only sets `Dockerfile` when `create`, and the
+  schema attribute carries `RequiresReplace()` so a real content change goes through
+  Create+Delete instead of a PATCH that would always 422 with `"This field is not
+  allowed."` regardless of value.
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are sent;
   the client only sends non-null fields so this composes safely.
@@ -193,6 +202,19 @@ live when the by-tag path silently returned zero results (no error) because only
 attach (`coolify_resource_tag`) but matched *exactly* (case-sensitive) on deploy — both
 `findTag` and `deploymentResource.trigger` normalize to lowercase client-side to
 compensate; don't remove either normalization.
+
+Watch for divergent `$allowedFields` whitelists between an object's create and update
+controller methods — found twice so far, both reported live by the same consumer
+against 4.3.2, both real upstream regressions rather than intentional immutability:
+`GithubController::update()` validates `private_key_uuid` with Laravel's `uuid` rule
+(RFC 4122) against Coolify's own nanoid ids, and `ApplicationsController::update_by_uuid`
+drops `dockerfile` from its whitelist outright while `store()` requires it on create.
+Both need an upstream issue (not filed yet as of this writing); the provider-side
+mitigation is the same shape each time — never send the field on `PATCH`, either by
+comparing against state (when the field is legitimately still updatable in principle,
+e.g. `private_key_uuid`) or with `RequiresReplace()` (when it's genuinely create-only,
+e.g. `dockerfile`) — and don't assume any other object's create/update field lists
+actually match without checking both controller methods directly.
 
 ## CI / Releases
 

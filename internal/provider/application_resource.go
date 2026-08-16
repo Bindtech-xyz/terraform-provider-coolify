@@ -196,8 +196,14 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"dockerfile": schema.StringAttribute{
 				MarkdownDescription: "Base64-encoded Dockerfile content. Setting it selects the " +
-					"dockerfile mode (use `base64encode(file(...))`).",
-				Optional: true,
+					"dockerfile mode (use `base64encode(file(...))`). Coolify's `PATCH` " +
+					"`/applications/{uuid}` rejects this field outright (`This field is not " +
+					"allowed.`) — its allowed-fields whitelist for updates omits `dockerfile` " +
+					"entirely, unlike the create endpoint, which requires it. There is no supported " +
+					"way to change a Dockerfile's content in place, so changing this value forces " +
+					"replacement instead of a doomed update attempt.",
+				Optional:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"docker_registry_image_name": schema.StringAttribute{
 				MarkdownDescription: "Docker image to run (e.g. `nginx`). Setting it selects the " +
@@ -416,7 +422,6 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		GitRepository:               stringOrNil(m.GitRepository),
 		GitBranch:                   stringOrNil(m.GitBranch),
 		GitCommitSHA:                stringOrNil(m.GitCommitSHA),
-		Dockerfile:                  stringOrNil(m.Dockerfile),
 		DockerRegistryImageName:     stringOrNil(m.DockerRegistryImageName),
 		DockerRegistryImageTag:      stringOrNil(m.DockerRegistryImageTag),
 		BuildPack:                   stringOrNil(m.BuildPack),
@@ -445,6 +450,15 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		LimitsCPUs:                  stringOrNil(m.LimitsCPUs),
 	}
 	if create {
+		// dockerfile is create-only: ApplicationsController::update_by_uuid's
+		// allowed-fields whitelist omits it entirely (confirmed against the
+		// controller source — dockerfile_location/dockerfile_target_build are
+		// there, dockerfile itself isn't), so PATCH always rejects it with
+		// "This field is not allowed." regardless of value. Sending it only on
+		// create keeps every other update from tripping over this, and the
+		// dockerfile attribute's RequiresReplace plan modifier means Update is
+		// never even called when it actually changes.
+		req.Dockerfile = stringOrNil(m.Dockerfile)
 		req.ProjectUUID = stringOrNil(m.ProjectUUID)
 		req.EnvironmentName = stringOrNil(m.EnvironmentName)
 		req.EnvironmentUUID = stringOrNil(m.EnvironmentUUID)

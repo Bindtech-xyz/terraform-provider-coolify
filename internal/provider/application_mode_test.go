@@ -82,3 +82,29 @@ func TestApplicationToRequestPlacementGating(t *testing.T) {
 		t.Error("update request must keep mutable fields")
 	}
 }
+
+// TestApplicationToRequestOmitsDockerfileOnUpdate locks in a regression
+// reported live against Coolify 4.3.2: ApplicationsController::update_by_uuid's
+// allowed-fields whitelist omits `dockerfile` entirely (dockerfile_location and
+// dockerfile_target_build are there, dockerfile itself isn't — confirmed
+// against the controller source, and store()'s own whitelist does include it),
+// so any PATCH carrying it 422s with "This field is not allowed.", even when
+// the value is unchanged. dockerfile must only ever be sent on create; the
+// schema's RequiresReplace plan modifier means a real content change goes
+// through Create+Delete, never Update, so it's safe to omit unconditionally.
+func TestApplicationToRequestOmitsDockerfileOnUpdate(t *testing.T) {
+	model := applicationResourceModel{
+		Name:       types.StringValue("api"),
+		Dockerfile: types.StringValue("RlJPTQ=="),
+	}
+
+	create := applicationToRequest(model, true)
+	if create.Dockerfile == nil || *create.Dockerfile != "RlJPTQ==" {
+		t.Error("create request must include dockerfile")
+	}
+
+	update := applicationToRequest(model, false)
+	if update.Dockerfile != nil {
+		t.Error("update request must never include dockerfile")
+	}
+}
