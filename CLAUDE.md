@@ -102,7 +102,15 @@ Deliberate design choices (do not "fix" these):
   required-but-unobtainable config values — a plain `terraform import` is fully
   clean, nothing to stash in a vault first. A token without `read:sensitive` still
   falls back to whatever was
-  configured, same as every other sensitive field.
+  configured, same as every other sensitive field. `organization` is also
+  `Optional`+`Computed` (not `Optional`-only): reported live — an organization-owned
+  App (as opposed to a personal-account App, the only kind exercised until this was
+  found) has Coolify's manifest-flow install capture the org name from GitHub itself,
+  independent of anything configured, so a left-null config hit "provider produced
+  inconsistent result" on the very first apply. Invisible with a personal-account App
+  since `organization` is genuinely null there — `api_url`/`html_url` were already
+  correctly `Optional`+`Computed` with static defaults, only `organization` had the
+  gap.
 - Deletes of applications/databases/services/destinations call
   `client.waitForDeletion` (poll until 404, backoff 500ms→5s) because Coolify tears
   down asynchronously; without it, destroy-then-recreate collides on held

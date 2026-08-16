@@ -74,8 +74,13 @@ func (r *githubAppResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required:            true,
 			},
 			"organization": schema.StringAttribute{
-				MarkdownDescription: "GitHub organization the App belongs to (omit for a user App).",
-				Optional:            true,
+				MarkdownDescription: "GitHub organization the App belongs to (omit for a user App). " +
+					"Coolify's manifest-flow install captures this from GitHub itself for an " +
+					"organization-owned App, independent of anything configured here — `Computed` so " +
+					"a left-null config doesn't fight a server-populated value.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"api_url": schema.StringAttribute{
 				MarkdownDescription: "GitHub API URL. Defaults to `https://api.github.com`.",

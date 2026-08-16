@@ -96,3 +96,28 @@ func TestDatabaseBackupDatabasesToBackupIsComputed(t *testing.T) {
 			"logical database name when unset, never \"\"")
 	}
 }
+
+// TestGithubAppOrganizationIsComputed locks in a regression reported live:
+// organization was Optional-only, but Coolify's manifest-flow install
+// captures it from GitHub itself for an organization-owned App, independent
+// of anything configured -- invisible with a personal-account App (the only
+// kind exercised until now), since organization is genuinely null there, but
+// a "provider produced inconsistent result" on the very first apply against
+// any org-owned App.
+func TestGithubAppOrganizationIsComputed(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	(&githubAppResource{}).Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("Schema: %v", schemaResp.Diagnostics)
+	}
+
+	attr, ok := schemaResp.Schema.Attributes["organization"]
+	if !ok {
+		t.Fatal("schema is missing \"organization\"")
+	}
+	if !attr.IsComputed() {
+		t.Error("\"organization\" must be Computed: Coolify populates it from GitHub for an " +
+			"organization-owned App even when left unset in config")
+	}
+}
