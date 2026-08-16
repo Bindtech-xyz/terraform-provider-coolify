@@ -84,12 +84,24 @@ func keepNullIfEmpty(apiValue string, prior types.String) types.String {
 
 // keepPriorIfHidden adopts the API value unless the API hid it (empty string)
 // while the prior state holds a value — used for sensitive fields the API only
-// echoes to tokens with the read:sensitive ability. An Optional+Computed
-// attribute that is unknown in the plan resolves to empty when the API hides it
-// and nothing was configured.
+// echoes to tokens with the read:sensitive ability, and (on coolify_database)
+// for the other seven engines' fields on whichever one wasn't configured.
+//
+// When the API hides the value AND nothing was ever configured (prior is null
+// or unknown — e.g. an engine's fields on a database of a different engine,
+// which are never sent and never echoed), this must stay null, not fall
+// through to "". A bug here previously did exactly that: found live when a
+// postgresql coolify_database's state carried "" for every other engine's
+// fields (mysql_user, clickhouse_admin_user, ...), and stringOrNil only nils
+// out true nil pointers — "" survives `,omitempty` and gets sent on every
+// PATCH, 422ing on "This field is not allowed." for all of them at once, no
+// matter which engine or which attribute the update actually touched.
 func keepPriorIfHidden(apiValue string, prior types.String) types.String {
-	if apiValue == "" && !prior.IsNull() && !prior.IsUnknown() {
-		return prior
+	if apiValue == "" {
+		if !prior.IsNull() && !prior.IsUnknown() {
+			return prior
+		}
+		return types.StringNull()
 	}
 	return types.StringValue(apiValue)
 }

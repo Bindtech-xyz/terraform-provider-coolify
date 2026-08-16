@@ -324,6 +324,15 @@ func (r *databaseResource) Configure(_ context.Context, req resource.ConfigureRe
 	r.client = resourceClient(req, resp)
 }
 
+// databaseToRequest maps the plan to an API body. Engine-specific fields are
+// gated by m.Engine — a switch, not just "send whatever's non-null" — because
+// every other engine's fields also live on this shared model as
+// Optional+Computed attributes, and state can carry a stale or (formerly,
+// see keepPriorIfHidden) an incorrectly-empty-instead-of-null value for any
+// of them. Coolify rejects a foreign engine's fields with a 422 "This field
+// is not allowed.", on ALL of them at once, no matter which single attribute
+// the update actually touched — found live on a postgresql database's very
+// first update after creation.
 func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequest {
 	req := client.DatabaseRequest{
 		Name:         stringOrNil(m.Name),
@@ -339,35 +348,41 @@ func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequ
 		LimitsMemoryReservation: stringOrNil(m.LimitsMemoryReservation),
 		LimitsCPUSet:            stringOrNil(m.LimitsCPUSet),
 		LimitsCPUShares:         int64OrNil(m.LimitsCPUShares),
-
-		PostgresUser:           stringOrNil(m.PostgresUser),
-		PostgresPassword:       stringOrNil(m.PostgresPassword),
-		PostgresDB:             stringOrNil(m.PostgresDB),
-		PostgresInitdbArgs:     stringOrNil(m.PostgresInitdbArgs),
-		PostgresHostAuthMethod: stringOrNil(m.PostgresHostAuthMethod),
-		PostgresConf:           stringOrNil(m.PostgresConf),
-
-		MysqlRootPassword: stringOrNil(m.MysqlRootPassword),
-		MysqlPassword:     stringOrNil(m.MysqlPassword),
-		MysqlUser:         stringOrNil(m.MysqlUser),
-		MysqlDatabase:     stringOrNil(m.MysqlDatabase),
-
-		MariadbRootPassword: stringOrNil(m.MariadbRootPassword),
-		MariadbPassword:     stringOrNil(m.MariadbPassword),
-		MariadbUser:         stringOrNil(m.MariadbUser),
-		MariadbDatabase:     stringOrNil(m.MariadbDatabase),
-
-		MongoInitdbRootUsername: stringOrNil(m.MongoInitdbRootUsername),
-		MongoInitdbRootPassword: stringOrNil(m.MongoInitdbRootPassword),
-		MongoInitdbDatabase:     stringOrNil(m.MongoInitdbDatabase),
-
-		RedisPassword:     stringOrNil(m.RedisPassword),
-		KeydbPassword:     stringOrNil(m.KeydbPassword),
-		DragonflyPassword: stringOrNil(m.DragonflyPassword),
-
-		ClickhouseAdminUser:     stringOrNil(m.ClickhouseAdminUser),
-		ClickhouseAdminPassword: stringOrNil(m.ClickhouseAdminPassword),
 	}
+
+	switch client.DatabaseEngine(m.Engine.ValueString()) {
+	case client.DatabasePostgreSQL:
+		req.PostgresUser = stringOrNil(m.PostgresUser)
+		req.PostgresPassword = stringOrNil(m.PostgresPassword)
+		req.PostgresDB = stringOrNil(m.PostgresDB)
+		req.PostgresInitdbArgs = stringOrNil(m.PostgresInitdbArgs)
+		req.PostgresHostAuthMethod = stringOrNil(m.PostgresHostAuthMethod)
+		req.PostgresConf = stringOrNil(m.PostgresConf)
+	case client.DatabaseMySQL:
+		req.MysqlRootPassword = stringOrNil(m.MysqlRootPassword)
+		req.MysqlPassword = stringOrNil(m.MysqlPassword)
+		req.MysqlUser = stringOrNil(m.MysqlUser)
+		req.MysqlDatabase = stringOrNil(m.MysqlDatabase)
+	case client.DatabaseMariaDB:
+		req.MariadbRootPassword = stringOrNil(m.MariadbRootPassword)
+		req.MariadbPassword = stringOrNil(m.MariadbPassword)
+		req.MariadbUser = stringOrNil(m.MariadbUser)
+		req.MariadbDatabase = stringOrNil(m.MariadbDatabase)
+	case client.DatabaseMongoDB:
+		req.MongoInitdbRootUsername = stringOrNil(m.MongoInitdbRootUsername)
+		req.MongoInitdbRootPassword = stringOrNil(m.MongoInitdbRootPassword)
+		req.MongoInitdbDatabase = stringOrNil(m.MongoInitdbDatabase)
+	case client.DatabaseRedis:
+		req.RedisPassword = stringOrNil(m.RedisPassword)
+	case client.DatabaseKeyDB:
+		req.KeydbPassword = stringOrNil(m.KeydbPassword)
+	case client.DatabaseDragonfly:
+		req.DragonflyPassword = stringOrNil(m.DragonflyPassword)
+	case client.DatabaseClickhouse:
+		req.ClickhouseAdminUser = stringOrNil(m.ClickhouseAdminUser)
+		req.ClickhouseAdminPassword = stringOrNil(m.ClickhouseAdminPassword)
+	}
+
 	if create {
 		req.ProjectUUID = stringOrNil(m.ProjectUUID)
 		req.EnvironmentName = stringOrNil(m.EnvironmentName)

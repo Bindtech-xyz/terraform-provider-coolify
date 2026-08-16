@@ -45,7 +45,9 @@ func TestKeepNullIfEmpty(t *testing.T) {
 }
 
 // keepPriorIfHidden covers sensitive fields hidden from tokens without the
-// read:sensitive ability.
+// read:sensitive ability, and (on coolify_database) fields belonging to an
+// engine other than the one configured — the API never echoes either, so
+// both must land on the same "never configured" behavior: stay null, not "".
 func TestKeepPriorIfHidden(t *testing.T) {
 	if got := keepPriorIfHidden("", types.StringValue("secret")); got.ValueString() != "secret" {
 		t.Error("hidden API value must keep the configured secret")
@@ -53,7 +55,17 @@ func TestKeepPriorIfHidden(t *testing.T) {
 	if got := keepPriorIfHidden("rotated", types.StringValue("secret")); got.ValueString() != "rotated" {
 		t.Error("visible API value must win")
 	}
-	if got := keepPriorIfHidden("", types.StringNull()); !got.IsNull() && got.ValueString() != "" {
-		t.Errorf("hidden + never configured = %v", got)
+	// Regression: this used to fall through to types.StringValue(""), which
+	// is NOT null — a database's cross-engine fields (never configured, never
+	// echoed by the API) ended up "" in state instead of null, and "" survives
+	// stringOrNil's nil check unlike true nil, so it got sent on every PATCH
+	// and 422ed as a foreign field. Must be strictly IsNull(), not merely
+	// falsy — a permissive assertion here (accepting "" as good enough) is
+	// exactly what let the original bug ship unnoticed.
+	if got := keepPriorIfHidden("", types.StringNull()); !got.IsNull() {
+		t.Errorf("hidden + never configured (null prior) must stay null, got %v", got)
+	}
+	if got := keepPriorIfHidden("", types.StringUnknown()); !got.IsNull() {
+		t.Errorf("hidden + never configured (unknown prior) must stay null, got %v", got)
 	}
 }

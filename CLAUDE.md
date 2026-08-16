@@ -60,8 +60,22 @@ Deliberate design choices (do not "fix" these):
   `Optional`+`Computed`+`Sensitive`, `keepPriorIfHidden` (same `$hidden`-but-only-
   behind-`read:sensitive` treatment as `coolify_github_app.client_secret`).
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
-  union of engine-specific fields. Coolify 422s when fields of another engine are sent;
-  the client only sends non-null fields so this composes safely.
+  union of engine-specific fields. Coolify 422s when fields of another engine are
+  sent, on ALL of them at once regardless of which single attribute the update
+  actually touched; `databaseToRequest` gates every engine-specific field behind a
+  `switch` on `m.Engine` — NOT just "send whatever's non-null", because every other
+  engine's fields also live on this shared model as `Optional`+`Computed`
+  attributes, and state can carry a stale or incorrectly-empty value for any of
+  them. Found live: `keepPriorIfHidden` used to turn "the API hid it or never sent
+  it, and nothing was ever configured" into `types.StringValue("")` instead of
+  null (fixed to match `keepNullIfEmpty`'s null-preserving behavior in that case),
+  and `stringOrNil` only nils a true nil, not `""`, so `,omitempty` never dropped it
+  — together, a postgresql database's very first update after creation sent every
+  mysql/mariadb/mongo/redis/keydb/dragonfly/clickhouse field as `""` and 422ed on
+  all of them simultaneously. The `switch` is the real fix (it saves even a state
+  already carrying stale `""` values, no refresh needed first); the
+  `keepPriorIfHidden` correction closes the same category of bug for every other
+  caller (`coolify_github_app`/`coolify_application` secrets).
   `postgres_initdb_args`/`postgres_host_auth_method` (postgresql engine) and
   `limits_memory_swap`/`limits_memory_swappiness`/`limits_memory_reservation`/
   `limits_cpuset`/`limits_cpu_shares` (every engine) are requested-live additions,

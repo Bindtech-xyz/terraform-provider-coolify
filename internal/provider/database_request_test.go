@@ -1,9 +1,12 @@
 package provider
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"github.com/Bindtech-xyz/terraform-provider-coolify/internal/client"
 )
 
 // Placement and instant_deploy are create-only on databases; sending them on
@@ -69,6 +72,60 @@ func TestDatabaseToRequestSendsPostgresInitdbFields(t *testing.T) {
 	}
 	if req.PostgresHostAuthMethod == nil || *req.PostgresHostAuthMethod != "scram-sha-256" {
 		t.Error("postgres_host_auth_method must be sent")
+	}
+}
+
+// TestDatabaseUpdateNeverLeaksForeignEngineFields is the exact regression
+// reported live: create a postgresql database, read it back the way Coolify
+// actually responds (every other engine's fields simply absent from the
+// JSON, decoding to "" on the Go string fields — never present, never a
+// configured value), then update a common field like limits_memory. The PATCH
+// body must not carry a single key belonging to any engine other than the
+// one configured, no matter what stale/empty values ended up in state.
+//
+// This is a two-layer fix and either alone would have masked the other:
+// keepPriorIfHidden used to turn "hidden and never configured" into
+// types.StringValue("") instead of null, and databaseToRequest sent every
+// engine's fields unconditionally (stringOrNil only nils true nil, not "").
+// Together they turned Coolify's normal "field absent" response into a body
+// listing every foreign field as "This field is not allowed." on the very
+// first update after creation.
+func TestDatabaseUpdateNeverLeaksForeignEngineFields(t *testing.T) {
+	// What Coolify's GET actually returns for a postgresql-only database:
+	// every other engine's field is simply absent from the JSON, so it
+	// decodes to Go's zero value, "".
+	api := &client.Database{
+		UUID:         "db1",
+		LimitsMemory: "8g",
+		LimitsCPUs:   "6",
+		PostgresUser: "postgres",
+		PostgresDB:   "app",
+	}
+	state := databaseToModel(api, databaseResourceModel{Engine: types.StringValue("postgresql")})
+
+	body := databaseToRequest(state, false)
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	for _, foreign := range []string{
+		"mysql_root_password", "mysql_password", "mysql_user", "mysql_database",
+		"mariadb_root_password", "mariadb_password", "mariadb_user", "mariadb_database",
+		"mongo_initdb_root_username", "mongo_initdb_root_password", "mongo_initdb_database",
+		"redis_password", "keydb_password", "dragonfly_password",
+		"clickhouse_admin_user", "clickhouse_admin_password",
+	} {
+		if _, present := got[foreign]; present {
+			t.Errorf("PATCH body must not contain foreign-engine field %q, got %+v", foreign, got)
+		}
+	}
+	if got["postgres_user"] != "postgres" {
+		t.Errorf("postgres_user must survive the round trip, got %+v", got)
 	}
 }
 
