@@ -34,10 +34,18 @@ Deliberate design choices (do not "fix" these):
   shows it still drifted, triggering a normal `Update`). If `instant_deploy` is also
   set, Coolify's create-triggered first build already started before that follow-up
   PATCH lands, so only later deploys see the target stage. `dockerfile_location` has
-  no such mismatch — both endpoints accept it — so it's sent unconditionally; Coolify
-  defaults it to `/Dockerfile` when unset (confirmed live), so like `base_directory`
-  it's `Computed`, not just `Optional`, to avoid a "provider produced inconsistent
-  result" error.
+  no such mismatch — sent unconditionally on both create and update. All five create
+  endpoints are 3-line wrappers around one shared private `create_application()`
+  method with a single `$allowedFields` (confirmed by reading past the OpenAPI
+  annotations, which list fields per-endpoint for documentation only and do NOT
+  reflect the actual enforcement code — a red herring that cost a round of back typing
+  the wrong conclusion, `dockerfile_location` sent for a git-mode create looked
+  rejectable from the annotations alone but isn't); that array and the model's
+  `$fillable` both include it, and `Application::dockerfileLocation()`'s Eloquent
+  mutator confirms the actual default: `/Dockerfile` only when `build_pack ===
+  'dockerfile'`, `null` otherwise — conditional on build_pack, not a blanket default,
+  so like `base_directory` it's `Computed`, not just `Optional`, to avoid a "provider
+  produced inconsistent result" error regardless of which branch applies.
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are sent;
   the client only sends non-null fields so this composes safely.
