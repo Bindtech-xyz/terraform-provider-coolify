@@ -1,6 +1,9 @@
 package provider
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -68,13 +71,26 @@ func TestSharedEnvScopeMapping(t *testing.T) {
 }
 
 func TestGithubAppToModelKeepsSecrets(t *testing.T) {
-	api := &client.GithubApp{ID: 42, UUID: "gh1", Name: "deployer", ClientID: ""}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":7,"uuid":"key-uuid-7"}]`))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := client.New(srv.URL, "test-token")
+	if err != nil {
+		t.Fatalf("client.New: %v", err)
+	}
+
+	api := &client.GithubApp{ID: 42, UUID: "gh1", Name: "deployer", ClientID: "", PrivateKeyID: 7}
 	prior := githubAppResourceModel{
 		ClientID:      types.StringValue("Iv1.abc"),
 		ClientSecret:  types.StringValue("s3cret"),
 		WebhookSecret: types.StringValue("hook"),
 	}
-	m := githubAppToModel(api, prior)
+	r := &githubAppResource{client: c}
+	m, diags := r.githubAppToModel(context.Background(), api, prior)
+	if diags.HasError() {
+		t.Fatalf("githubAppToModel: %v", diags)
+	}
 	if m.ClientID.ValueString() != "Iv1.abc" {
 		t.Error("hidden client_id must keep the configured value")
 	}
@@ -83,5 +99,8 @@ func TestGithubAppToModelKeepsSecrets(t *testing.T) {
 	}
 	if m.ID.ValueInt64() != 42 {
 		t.Error("numeric id must be adopted")
+	}
+	if m.PrivateKeyUUID.ValueString() != "key-uuid-7" {
+		t.Errorf("private_key_uuid must be resolved from private_key_id, got %q", m.PrivateKeyUUID.ValueString())
 	}
 }

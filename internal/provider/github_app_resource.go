@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -156,7 +157,9 @@ func (r *githubAppResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, githubAppToModel(app, plan))...)
+	model, diags := r.githubAppToModel(ctx, app, plan)
+	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
 func (r *githubAppResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -179,17 +182,43 @@ func (r *githubAppResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, githubAppToModel(app, state))...)
+	model, diags := r.githubAppToModel(ctx, app, state)
+	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
+}
+
+// githubAppUpdateRequest builds the PATCH body for an update, omitting
+// private_key_uuid whenever it's unchanged from state.
+//
+// Coolify's PATCH validates private_key_uuid with Laravel's `uuid` rule (RFC
+// 4122), but Coolify's own private key ids are short nanoids — no value can
+// ever satisfy it (confirmed against GithubController::update(), line ~645;
+// the POST path at line ~231 uses the correct `string` rule on the same
+// field, so this is an upstream regression, not a real constraint). Every
+// value here is unpatchable today, so only send it when it's actually
+// changing — an apply that doesn't touch the private key must not 422 on a
+// field nobody asked to change. A genuine private-key change is still
+// attempted (and will still 422 until upstream fixes the validator) rather
+// than silently dropped.
+func githubAppUpdateRequest(plan, state githubAppResourceModel) client.GithubAppRequest {
+	body := githubAppToRequest(plan)
+	if plan.PrivateKeyUUID.ValueString() == state.PrivateKeyUUID.ValueString() {
+		body.PrivateKeyUUID = nil
+	}
+	return body
 }
 
 func (r *githubAppResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan githubAppResourceModel
+	var plan, state githubAppResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	app, err := r.client.UpdateGithubApp(ctx, plan.ID.ValueInt64(), githubAppToRequest(plan))
+	body := githubAppUpdateRequest(plan, state)
+
+	app, err := r.client.UpdateGithubApp(ctx, plan.ID.ValueInt64(), body)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			fmt.Sprintf("Unable to update Coolify GitHub App %d", plan.ID.ValueInt64()),
@@ -198,7 +227,9 @@ func (r *githubAppResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, githubAppToModel(app, plan))...)
+	model, diags := r.githubAppToModel(ctx, app, plan)
+	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
 func (r *githubAppResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -233,12 +264,41 @@ func (r *githubAppResource) ImportState(ctx context.Context, req resource.Import
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, githubAppToModel(app, githubAppResourceModel{}))...)
+	model, diags := r.githubAppToModel(ctx, app, githubAppResourceModel{})
+	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, model)...)
 }
 
-// githubAppToModel merges the API object with prior state; secrets are never
-// echoed back and are preserved from configuration.
-func githubAppToModel(a *client.GithubApp, prior githubAppResourceModel) githubAppResourceModel {
+// resolvePrivateKeyUUID looks up the uuid of the private key with the given
+// numeric id. GithubApp responses only ever carry private_key_id (there's no
+// single private-key GET by id, only by uuid — see PrivateKey.GetPrivateKey),
+// so this always needs a full list scan, the same shape GetGithubApp itself
+// needs since /github-apps has no single-object GET either.
+func resolvePrivateKeyUUID(ctx context.Context, c *client.Client, id int64) (string, error) {
+	keys, err := c.ListPrivateKeys(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, k := range keys {
+		if k.ID == id {
+			return k.UUID, nil
+		}
+	}
+	return "", fmt.Errorf("private key id %d not found", id)
+}
+
+// githubAppToModel merges the API object with prior state; secrets Coolify
+// truly never echoes (client_secret, webhook_secret, client_id when hidden)
+// are preserved from configuration. private_key_uuid is NOT one of those —
+// GithubApp.$hidden only covers the two secrets, so private_key_id is always
+// present on the response and is resolved to its uuid here on every
+// Create/Read/Update/Import, keeping state accurate instead of trusting
+// whatever was last configured (which is what left it permanently null after
+// import, triggering an update on every apply — see the PATCH comment in
+// Update). Resolution failure downgrades to a warning and keeps the prior
+// value, consistent with keepPriorIfHidden's null-preserving philosophy.
+func (r *githubAppResource) githubAppToModel(ctx context.Context, a *client.GithubApp, prior githubAppResourceModel) (githubAppResourceModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
 	m := prior
 	m.ID = types.Int64Value(a.ID)
 	m.UUID = types.StringValue(a.UUID)
@@ -250,5 +310,15 @@ func githubAppToModel(a *client.GithubApp, prior githubAppResourceModel) githubA
 	m.InstallationID = types.Int64Value(a.InstallationID)
 	m.ClientID = keepPriorIfHidden(a.ClientID, prior.ClientID)
 	m.IsSystemWide = types.BoolValue(a.IsSystemWide)
-	return m
+
+	if uuid, err := resolvePrivateKeyUUID(ctx, r.client, a.PrivateKeyID); err != nil {
+		diags.AddWarning(
+			"Unable to resolve private_key_uuid",
+			fmt.Sprintf("Looking up the uuid for private key id %d failed: %s. Keeping the prior value in state.", a.PrivateKeyID, err),
+		)
+	} else {
+		m.PrivateKeyUUID = types.StringValue(uuid)
+	}
+
+	return m, diags
 }

@@ -36,7 +36,22 @@ Deliberate design choices (do not "fix" these):
   schema lives in the resource layer, and only configured fields are sent/refreshed so
   unmanaged settings never diff.
 - `coolify_github_app` / `coolify_gitlab_app` are addressed by numeric id (not uuid) —
-  the API has no single-app GET, reads filter the list.
+  the API has no single-app GET, reads filter the list. `coolify_github_app`'s
+  `private_key_uuid` is genuinely unpatchable on upstream Coolify today:
+  `GithubController::update()` validates it with Laravel's `uuid` rule (RFC 4122)
+  before looking it up with `PrivateKey::where('uuid', ...)`, but Coolify's own
+  private key ids are short nanoids — no value can satisfy both, confirmed by
+  reading the controller source directly (`store()`, the POST path, uses the
+  correct `string` rule on the same field one call earlier — an upstream
+  regression, not a real constraint). `githubAppUpdateRequest` omits the field
+  from the PATCH body whenever it's unchanged from state so an unrelated apply
+  never 422s on it. Read/Import always resolve `private_key_id` (echoed on every
+  response — `GithubApp.$hidden` only covers the two secrets) to its uuid via
+  `resolvePrivateKeyUUID` (a `/security/keys` list scan) instead of trusting
+  whatever was last configured, which is what used to leave the field
+  permanently null after import and trigger an update — hence this 422 — on
+  every single apply. Changing the private key for real still 422s until
+  upstream fixes the validator.
 - Deletes of applications/databases/services/destinations call
   `client.waitForDeletion` (poll until 404, backoff 500ms→5s) because Coolify tears
   down asynchronously; without it, destroy-then-recreate collides on held

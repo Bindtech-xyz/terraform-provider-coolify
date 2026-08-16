@@ -20,7 +20,13 @@ type GithubApp struct {
 	AppID          int64  `json:"app_id"`
 	InstallationID int64  `json:"installation_id"`
 	ClientID       string `json:"client_id"`
-	IsSystemWide   bool   `json:"is_system_wide"`
+	// PrivateKeyID is the numeric id of the linked private key. GithubApp's
+	// $hidden only covers client_secret/webhook_secret, so this is echoed on
+	// every response — there is no way to resolve it to a uuid without a
+	// separate /security/keys lookup (see resolvePrivateKeyUUID in the
+	// provider layer).
+	PrivateKeyID int64 `json:"private_key_id"`
+	IsSystemWide bool  `json:"is_system_wide"`
 }
 
 // GithubAppRequest is the create/update body. ClientSecret, WebhookSecret and
