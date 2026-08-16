@@ -53,6 +53,14 @@ type Application struct {
 	RedirectBehaviour       string `json:"redirect"`
 	LimitsMemory            string `json:"limits_memory"`
 	LimitsCPUs              string `json:"limits_cpus"`
+	// LimitsMemorySwappiness and LimitsCPUShares are genuine integer columns
+	// (confirmed against the migrations), unlike every other limits_* field —
+	// see the identical note on client.Database.
+	LimitsMemorySwap        string `json:"limits_memory_swap"`
+	LimitsMemorySwappiness  int64  `json:"limits_memory_swappiness"`
+	LimitsMemoryReservation string `json:"limits_memory_reservation"`
+	LimitsCPUSet            string `json:"limits_cpuset"`
+	LimitsCPUShares         int64  `json:"limits_cpu_shares"`
 	// ManualWebhookSecret* are `$hidden` on the Application model — echoed
 	// only to a token with the read:sensitive ability, same as
 	// GithubApp.client_secret/webhook_secret.
@@ -146,8 +154,13 @@ type ApplicationRequest struct {
 	HealthCheckPort    *string `json:"health_check_port,omitempty"`
 
 	// Limits.
-	LimitsMemory *string `json:"limits_memory,omitempty"`
-	LimitsCPUs   *string `json:"limits_cpus,omitempty"`
+	LimitsMemory            *string `json:"limits_memory,omitempty"`
+	LimitsCPUs              *string `json:"limits_cpus,omitempty"`
+	LimitsMemorySwap        *string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int64  `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation *string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUSet            *string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int64  `json:"limits_cpu_shares,omitempty"`
 }
 
 // applicationCreatePaths maps a type to its POST endpoint.

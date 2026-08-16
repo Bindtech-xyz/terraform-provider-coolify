@@ -62,6 +62,21 @@ Deliberate design choices (do not "fix" these):
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are sent;
   the client only sends non-null fields so this composes safely.
+  `postgres_initdb_args`/`postgres_host_auth_method` (postgresql engine) and
+  `limits_memory_swap`/`limits_memory_swappiness`/`limits_memory_reservation`/
+  `limits_cpuset`/`limits_cpu_shares` (every engine) are requested-live additions,
+  present in Coolify's `$allowedFields` for both create and update on every engine
+  (no whitelist mismatch, unlike `coolify_application.dockerfile`) but previously
+  unexposed. `limits_memory_swappiness` and `limits_cpu_shares` are the only two of
+  the five limits fields that are genuine integer database columns (confirmed
+  against the table migrations — `$table->integer(...)`, no Eloquent cast overriding
+  it); every other `limits_*` field, on both `coolify_database` and
+  `coolify_application`, is a string column even though it reads as a number (e.g.
+  `"0"` for unlimited) — decoding the wrong JSON kind into a Go struct field errors
+  the whole response, so this distinction is load-bearing, not cosmetic.
+  `coolify_application` carries the identical five extended `limits_*` fields with
+  the identical int64-vs-string split, for the same reason (confirmed against its own
+  migration).
 - `coolify_service.type` is intentionally NOT validated against a static enum — the
   one-click catalog (300+ templates) evolves with Coolify. `coolify_service_templates`
   fetches the live CDN feed (`client.DefaultServiceTemplatesURL`) for discovery.

@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -104,6 +105,12 @@ type applicationResourceModel struct {
 	// Limits.
 	LimitsMemory types.String `tfsdk:"limits_memory"`
 	LimitsCPUs   types.String `tfsdk:"limits_cpus"`
+
+	LimitsMemorySwap        types.String `tfsdk:"limits_memory_swap"`
+	LimitsMemorySwappiness  types.Int64  `tfsdk:"limits_memory_swappiness"`
+	LimitsMemoryReservation types.String `tfsdk:"limits_memory_reservation"`
+	LimitsCPUSet            types.String `tfsdk:"limits_cpuset"`
+	LimitsCPUShares         types.Int64  `tfsdk:"limits_cpu_shares"`
 
 	// Read-only.
 	Status types.String `tfsdk:"status"`
@@ -420,6 +427,38 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"limits_memory_swap": schema.StringAttribute{
+				MarkdownDescription: "Memory + swap limit (e.g. `1g`). Coolify defaults unset to " +
+					"`0` (unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_swappiness": schema.Int64Attribute{
+				MarkdownDescription: "Kernel swappiness (0-100). Coolify defaults unset to `60`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_reservation": schema.StringAttribute{
+				MarkdownDescription: "Soft memory reservation (e.g. `256m`). Coolify defaults unset " +
+					"to `0` (none).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpuset": schema.StringAttribute{
+				MarkdownDescription: "Comma-separated CPU cores to pin to (e.g. `0,1`).",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpu_shares": schema.Int64Attribute{
+				MarkdownDescription: "Relative CPU weight. Coolify defaults unset to `1024`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
 
 			// Read-only.
 			"status": schema.StringAttribute{
@@ -522,6 +561,11 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		HealthCheckPath:              stringOrNil(m.HealthCheckPath),
 		LimitsMemory:                 stringOrNil(m.LimitsMemory),
 		LimitsCPUs:                   stringOrNil(m.LimitsCPUs),
+		LimitsMemorySwap:             stringOrNil(m.LimitsMemorySwap),
+		LimitsMemorySwappiness:       int64OrNil(m.LimitsMemorySwappiness),
+		LimitsMemoryReservation:      stringOrNil(m.LimitsMemoryReservation),
+		LimitsCPUSet:                 stringOrNil(m.LimitsCPUSet),
+		LimitsCPUShares:              int64OrNil(m.LimitsCPUShares),
 	}
 	if create {
 		// dockerfile is create-only: ApplicationsController::update_by_uuid's
@@ -698,10 +742,16 @@ func applicationToModel(a *client.Application, prior applicationResourceModel) a
 	m.ManualWebhookSecretGitlab = keepPriorIfHidden(a.ManualWebhookSecretGitlab, prior.ManualWebhookSecretGitlab)
 	m.ManualWebhookSecretBitbucket = keepPriorIfHidden(a.ManualWebhookSecretBitbucket, prior.ManualWebhookSecretBitbucket)
 	m.ManualWebhookSecretGitea = keepPriorIfHidden(a.ManualWebhookSecretGitea, prior.ManualWebhookSecretGitea)
-	// Both Computed (Coolify defaults unset to "0"/unlimited, never ""):
-	// adopt directly, no null-preservation — "" never legitimately occurs.
+	// All Computed (Coolify defaults each unset, never ""/0 by omission):
+	// adopt directly, no null-preservation — the empty/zero value never
+	// legitimately means "unconfigured" here.
 	m.LimitsMemory = types.StringValue(a.LimitsMemory)
 	m.LimitsCPUs = types.StringValue(a.LimitsCPUs)
+	m.LimitsMemorySwap = types.StringValue(a.LimitsMemorySwap)
+	m.LimitsMemorySwappiness = types.Int64Value(a.LimitsMemorySwappiness)
+	m.LimitsMemoryReservation = types.StringValue(a.LimitsMemoryReservation)
+	m.LimitsCPUSet = types.StringValue(a.LimitsCPUSet)
+	m.LimitsCPUShares = types.Int64Value(a.LimitsCPUShares)
 
 	return m
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -57,11 +58,19 @@ type databaseResourceModel struct {
 	LimitsMemory  types.String `tfsdk:"limits_memory"`
 	LimitsCPUs    types.String `tfsdk:"limits_cpus"`
 
+	LimitsMemorySwap        types.String `tfsdk:"limits_memory_swap"`
+	LimitsMemorySwappiness  types.Int64  `tfsdk:"limits_memory_swappiness"`
+	LimitsMemoryReservation types.String `tfsdk:"limits_memory_reservation"`
+	LimitsCPUSet            types.String `tfsdk:"limits_cpuset"`
+	LimitsCPUShares         types.Int64  `tfsdk:"limits_cpu_shares"`
+
 	// PostgreSQL.
-	PostgresUser     types.String `tfsdk:"postgres_user"`
-	PostgresPassword types.String `tfsdk:"postgres_password"`
-	PostgresDB       types.String `tfsdk:"postgres_db"`
-	PostgresConf     types.String `tfsdk:"postgres_conf"`
+	PostgresUser           types.String `tfsdk:"postgres_user"`
+	PostgresPassword       types.String `tfsdk:"postgres_password"`
+	PostgresDB             types.String `tfsdk:"postgres_db"`
+	PostgresInitdbArgs     types.String `tfsdk:"postgres_initdb_args"`
+	PostgresHostAuthMethod types.String `tfsdk:"postgres_host_auth_method"`
+	PostgresConf           types.String `tfsdk:"postgres_conf"`
 
 	// MySQL.
 	MysqlRootPassword types.String `tfsdk:"mysql_root_password"`
@@ -219,11 +228,48 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"limits_memory_swap": schema.StringAttribute{
+				MarkdownDescription: "Memory + swap limit (e.g. `1g`). Coolify defaults unset to " +
+					"`0` (unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_swappiness": schema.Int64Attribute{
+				MarkdownDescription: "Kernel swappiness (0-100). Coolify defaults unset to `60`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_reservation": schema.StringAttribute{
+				MarkdownDescription: "Soft memory reservation (e.g. `256m`). Coolify defaults unset " +
+					"to `0` (none).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpuset": schema.StringAttribute{
+				MarkdownDescription: "Comma-separated CPU cores to pin to (e.g. `0,1`).",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpu_shares": schema.Int64Attribute{
+				MarkdownDescription: "Relative CPU weight. Coolify defaults unset to `1024`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
 
 			// PostgreSQL.
 			"postgres_user":     sensitiveEngineString("PostgreSQL user (postgresql engine)."),
 			"postgres_password": sensitiveEngineString("PostgreSQL password (postgresql engine)."),
 			"postgres_db":       engineString("Initial database name (postgresql engine)."),
+			"postgres_initdb_args": engineString("Arguments passed to `initdb` at first startup " +
+				"(postgresql engine) — e.g. locale/collation flags. Fixes the cluster's locale " +
+				"permanently; only takes effect on the very first start."),
+			"postgres_host_auth_method": engineString("`pg_hba.conf` auth method for the initial " +
+				"entries (postgresql engine), e.g. `trust` or `scram-sha-256`."),
 			"postgres_conf": schema.StringAttribute{
 				MarkdownDescription: "Base64-encoded postgresql.conf (postgresql engine).",
 				Optional:            true,
@@ -288,10 +334,18 @@ func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequ
 		LimitsMemory: stringOrNil(m.LimitsMemory),
 		LimitsCPUs:   stringOrNil(m.LimitsCPUs),
 
-		PostgresUser:     stringOrNil(m.PostgresUser),
-		PostgresPassword: stringOrNil(m.PostgresPassword),
-		PostgresDB:       stringOrNil(m.PostgresDB),
-		PostgresConf:     stringOrNil(m.PostgresConf),
+		LimitsMemorySwap:        stringOrNil(m.LimitsMemorySwap),
+		LimitsMemorySwappiness:  int64OrNil(m.LimitsMemorySwappiness),
+		LimitsMemoryReservation: stringOrNil(m.LimitsMemoryReservation),
+		LimitsCPUSet:            stringOrNil(m.LimitsCPUSet),
+		LimitsCPUShares:         int64OrNil(m.LimitsCPUShares),
+
+		PostgresUser:           stringOrNil(m.PostgresUser),
+		PostgresPassword:       stringOrNil(m.PostgresPassword),
+		PostgresDB:             stringOrNil(m.PostgresDB),
+		PostgresInitdbArgs:     stringOrNil(m.PostgresInitdbArgs),
+		PostgresHostAuthMethod: stringOrNil(m.PostgresHostAuthMethod),
+		PostgresConf:           stringOrNil(m.PostgresConf),
 
 		MysqlRootPassword: stringOrNil(m.MysqlRootPassword),
 		MysqlPassword:     stringOrNil(m.MysqlPassword),
@@ -467,6 +521,11 @@ func databaseToModel(d *client.Database, prior databaseResourceModel) databaseRe
 	// null-preservation.
 	m.LimitsMemory = types.StringValue(d.LimitsMemory)
 	m.LimitsCPUs = types.StringValue(d.LimitsCPUs)
+	m.LimitsMemorySwap = types.StringValue(d.LimitsMemorySwap)
+	m.LimitsMemorySwappiness = types.Int64Value(d.LimitsMemorySwappiness)
+	m.LimitsMemoryReservation = types.StringValue(d.LimitsMemoryReservation)
+	m.LimitsCPUSet = types.StringValue(d.LimitsCPUSet)
+	m.LimitsCPUShares = types.Int64Value(d.LimitsCPUShares)
 	m.Description = keepNullIfEmpty(d.Description, prior.Description)
 	if d.PublicPort != nil {
 		m.PublicPort = types.Int64Value(*d.PublicPort)
@@ -479,6 +538,8 @@ func databaseToModel(d *client.Database, prior databaseResourceModel) databaseRe
 	m.PostgresUser = keepPriorIfHidden(d.PostgresUser, prior.PostgresUser)
 	m.PostgresPassword = keepPriorIfHidden(d.PostgresPassword, prior.PostgresPassword)
 	m.PostgresDB = keepPriorIfHidden(d.PostgresDB, prior.PostgresDB)
+	m.PostgresInitdbArgs = keepPriorIfHidden(d.PostgresInitdbArgs, prior.PostgresInitdbArgs)
+	m.PostgresHostAuthMethod = keepPriorIfHidden(d.PostgresHostAuthMethod, prior.PostgresHostAuthMethod)
 	m.MysqlRootPassword = keepPriorIfHidden(d.MysqlRootPassword, prior.MysqlRootPassword)
 	m.MysqlPassword = keepPriorIfHidden(d.MysqlPassword, prior.MysqlPassword)
 	m.MysqlUser = keepPriorIfHidden(d.MysqlUser, prior.MysqlUser)

@@ -31,7 +31,8 @@ func TestApplicationServerDefaultedAttributesAreComputed(t *testing.T) {
 	for _, name := range []string{
 		"base_directory", "limits_memory", "limits_cpus",
 		"git_branch", "git_commit_sha", "build_pack", "static_image",
-		"dockerfile_location",
+		"dockerfile_location", "limits_memory_swap", "limits_memory_swappiness",
+		"limits_memory_reservation", "limits_cpuset", "limits_cpu_shares",
 	} {
 		attr, ok := schemaResp.Schema.Attributes[name]
 		if !ok {
@@ -61,7 +62,10 @@ func TestDatabaseLimitsAreComputed(t *testing.T) {
 		t.Fatalf("Schema: %v", schemaResp.Diagnostics)
 	}
 
-	for _, name := range []string{"limits_memory", "limits_cpus"} {
+	for _, name := range []string{
+		"limits_memory", "limits_cpus", "limits_memory_swap", "limits_memory_swappiness",
+		"limits_memory_reservation", "limits_cpuset", "limits_cpu_shares",
+	} {
 		attr, ok := schemaResp.Schema.Attributes[name]
 		if !ok {
 			t.Fatalf("schema is missing %q", name)

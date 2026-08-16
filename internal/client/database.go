@@ -43,6 +43,17 @@ type Database struct {
 	Status        string `json:"status"`
 	LimitsMemory  string `json:"limits_memory"`
 	LimitsCPUs    string `json:"limits_cpus"`
+	// LimitsMemorySwappiness and LimitsCPUShares are genuine integer columns
+	// (confirmed against the migrations — `$table->integer(...)`, no Eloquent
+	// cast overriding it), unlike every other limits_* field, which are all
+	// strings even though they read as numbers (e.g. "0" for unlimited).
+	// Decoding a JSON number into a Go string field errors, so getting this
+	// wrong breaks every database read, not just these two attributes.
+	LimitsMemorySwap        string `json:"limits_memory_swap"`
+	LimitsMemorySwappiness  int64  `json:"limits_memory_swappiness"`
+	LimitsMemoryReservation string `json:"limits_memory_reservation"`
+	LimitsCPUSet            string `json:"limits_cpuset"`
+	LimitsCPUShares         int64  `json:"limits_cpu_shares"`
 
 	// PostgreSQL.
 	PostgresUser           string `json:"postgres_user"`
@@ -104,6 +115,12 @@ type DatabaseRequest struct {
 	InstantDeploy *bool   `json:"instant_deploy,omitempty"`
 	LimitsMemory  *string `json:"limits_memory,omitempty"`
 	LimitsCPUs    *string `json:"limits_cpus,omitempty"`
+
+	LimitsMemorySwap        *string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int64  `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation *string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUSet            *string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int64  `json:"limits_cpu_shares,omitempty"`
 
 	// PostgreSQL.
 	PostgresUser           *string `json:"postgres_user,omitempty"`

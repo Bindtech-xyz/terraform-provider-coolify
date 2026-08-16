@@ -65,6 +65,29 @@ func TestApplicationRequestOmitsUnsetFields(t *testing.T) {
 	}
 }
 
+// TestApplicationDecodesIntegerLimits locks in a regression risk found while
+// wiring limits_memory_swappiness/limits_cpu_shares: unlike every other
+// limits_* field, the applications table stores these two as genuine integer
+// columns (confirmed against the migrations), so the API sends them as JSON
+// numbers, not strings. Decoding a JSON number into a Go string field errors
+// out the whole response, breaking every application read — not just these
+// two attributes — so this must stay int64.
+func TestApplicationDecodesIntegerLimits(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"uuid":"app1","limits_memory_swappiness":60,"limits_cpu_shares":1024}`))
+	}))
+	app, err := c.GetApplication(context.Background(), "app1")
+	if err != nil {
+		t.Fatalf("GetApplication: %v", err)
+	}
+	if app.LimitsMemorySwappiness != 60 {
+		t.Errorf("LimitsMemorySwappiness = %d, want 60", app.LimitsMemorySwappiness)
+	}
+	if app.LimitsCPUShares != 1024 {
+		t.Errorf("LimitsCPUShares = %d, want 1024", app.LimitsCPUShares)
+	}
+}
+
 func TestApplicationLifecycleActions(t *testing.T) {
 	var paths []string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
