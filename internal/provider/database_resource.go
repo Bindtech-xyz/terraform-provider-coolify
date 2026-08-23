@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -57,11 +59,26 @@ type databaseResourceModel struct {
 	LimitsMemory  types.String `tfsdk:"limits_memory"`
 	LimitsCPUs    types.String `tfsdk:"limits_cpus"`
 
+	LimitsMemorySwap        types.String `tfsdk:"limits_memory_swap"`
+	LimitsMemorySwappiness  types.Int64  `tfsdk:"limits_memory_swappiness"`
+	LimitsMemoryReservation types.String `tfsdk:"limits_memory_reservation"`
+	LimitsCPUSet            types.String `tfsdk:"limits_cpuset"`
+	LimitsCPUShares         types.Int64  `tfsdk:"limits_cpu_shares"`
+
+	// Health check.
+	HealthCheckEnabled     types.Bool  `tfsdk:"health_check_enabled"`
+	HealthCheckInterval    types.Int64 `tfsdk:"health_check_interval"`
+	HealthCheckTimeout     types.Int64 `tfsdk:"health_check_timeout"`
+	HealthCheckRetries     types.Int64 `tfsdk:"health_check_retries"`
+	HealthCheckStartPeriod types.Int64 `tfsdk:"health_check_start_period"`
+
 	// PostgreSQL.
-	PostgresUser     types.String `tfsdk:"postgres_user"`
-	PostgresPassword types.String `tfsdk:"postgres_password"`
-	PostgresDB       types.String `tfsdk:"postgres_db"`
-	PostgresConf     types.String `tfsdk:"postgres_conf"`
+	PostgresUser           types.String `tfsdk:"postgres_user"`
+	PostgresPassword       types.String `tfsdk:"postgres_password"`
+	PostgresDB             types.String `tfsdk:"postgres_db"`
+	PostgresInitdbArgs     types.String `tfsdk:"postgres_initdb_args"`
+	PostgresHostAuthMethod types.String `tfsdk:"postgres_host_auth_method"`
+	PostgresConf           types.String `tfsdk:"postgres_conf"`
 
 	// MySQL.
 	MysqlRootPassword types.String `tfsdk:"mysql_root_password"`
@@ -219,11 +236,89 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"limits_memory_swap": schema.StringAttribute{
+				MarkdownDescription: "Memory + swap limit (e.g. `1g`). Coolify defaults unset to " +
+					"`0` (unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_swappiness": schema.Int64Attribute{
+				MarkdownDescription: "Kernel swappiness (0-100). Coolify defaults unset to `60`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_reservation": schema.StringAttribute{
+				MarkdownDescription: "Soft memory reservation (e.g. `256m`). Coolify defaults unset " +
+					"to `0` (none).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpuset": schema.StringAttribute{
+				MarkdownDescription: "Comma-separated CPU cores to pin to (e.g. `0,1`).",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpu_shares": schema.Int64Attribute{
+				MarkdownDescription: "Relative CPU weight. Coolify defaults unset to `1024`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+
+			// Health check. Update-only on Coolify's API (confirmed against the
+			// controller source — absent from every create endpoint's
+			// allowed-fields list, present only in update_by_uuid's): a
+			// configured value is applied via a follow-up UpdateDatabase call
+			// right after creating, same pattern as
+			// coolify_application.dockerfile_target_build.
+			"health_check_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable the database health check probe. Coolify defaults " +
+					"unset to `true`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_interval": schema.Int64Attribute{
+				MarkdownDescription: "Seconds between probes. Coolify defaults unset to `15`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_timeout": schema.Int64Attribute{
+				MarkdownDescription: "Seconds before a probe attempt is considered failed. " +
+					"Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_retries": schema.Int64Attribute{
+				MarkdownDescription: "Consecutive failures before the database is marked " +
+					"unhealthy. Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_start_period": schema.Int64Attribute{
+				MarkdownDescription: "Grace period in seconds during which probe failures don't " +
+					"count, for a slow-starting database. Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
 
 			// PostgreSQL.
 			"postgres_user":     sensitiveEngineString("PostgreSQL user (postgresql engine)."),
 			"postgres_password": sensitiveEngineString("PostgreSQL password (postgresql engine)."),
 			"postgres_db":       engineString("Initial database name (postgresql engine)."),
+			"postgres_initdb_args": engineString("Arguments passed to `initdb` at first startup " +
+				"(postgresql engine) — e.g. locale/collation flags. Fixes the cluster's locale " +
+				"permanently; only takes effect on the very first start."),
+			"postgres_host_auth_method": engineString("`pg_hba.conf` auth method for the initial " +
+				"entries (postgresql engine), e.g. `trust` or `scram-sha-256`."),
 			"postgres_conf": schema.StringAttribute{
 				MarkdownDescription: "Base64-encoded postgresql.conf (postgresql engine).",
 				Optional:            true,
@@ -278,6 +373,15 @@ func (r *databaseResource) Configure(_ context.Context, req resource.ConfigureRe
 	r.client = resourceClient(req, resp)
 }
 
+// databaseToRequest maps the plan to an API body. Engine-specific fields are
+// gated by m.Engine — a switch, not just "send whatever's non-null" — because
+// every other engine's fields also live on this shared model as
+// Optional+Computed attributes, and state can carry a stale or (formerly,
+// see keepPriorIfHidden) an incorrectly-empty-instead-of-null value for any
+// of them. Coolify rejects a foreign engine's fields with a 422 "This field
+// is not allowed.", on ALL of them at once, no matter which single attribute
+// the update actually touched — found live on a postgresql database's very
+// first update after creation.
 func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequest {
 	req := client.DatabaseRequest{
 		Name:         stringOrNil(m.Name),
@@ -288,32 +392,46 @@ func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequ
 		LimitsMemory: stringOrNil(m.LimitsMemory),
 		LimitsCPUs:   stringOrNil(m.LimitsCPUs),
 
-		PostgresUser:     stringOrNil(m.PostgresUser),
-		PostgresPassword: stringOrNil(m.PostgresPassword),
-		PostgresDB:       stringOrNil(m.PostgresDB),
-		PostgresConf:     stringOrNil(m.PostgresConf),
-
-		MysqlRootPassword: stringOrNil(m.MysqlRootPassword),
-		MysqlPassword:     stringOrNil(m.MysqlPassword),
-		MysqlUser:         stringOrNil(m.MysqlUser),
-		MysqlDatabase:     stringOrNil(m.MysqlDatabase),
-
-		MariadbRootPassword: stringOrNil(m.MariadbRootPassword),
-		MariadbPassword:     stringOrNil(m.MariadbPassword),
-		MariadbUser:         stringOrNil(m.MariadbUser),
-		MariadbDatabase:     stringOrNil(m.MariadbDatabase),
-
-		MongoInitdbRootUsername: stringOrNil(m.MongoInitdbRootUsername),
-		MongoInitdbRootPassword: stringOrNil(m.MongoInitdbRootPassword),
-		MongoInitdbDatabase:     stringOrNil(m.MongoInitdbDatabase),
-
-		RedisPassword:     stringOrNil(m.RedisPassword),
-		KeydbPassword:     stringOrNil(m.KeydbPassword),
-		DragonflyPassword: stringOrNil(m.DragonflyPassword),
-
-		ClickhouseAdminUser:     stringOrNil(m.ClickhouseAdminUser),
-		ClickhouseAdminPassword: stringOrNil(m.ClickhouseAdminPassword),
+		LimitsMemorySwap:        stringOrNil(m.LimitsMemorySwap),
+		LimitsMemorySwappiness:  int64OrNil(m.LimitsMemorySwappiness),
+		LimitsMemoryReservation: stringOrNil(m.LimitsMemoryReservation),
+		LimitsCPUSet:            stringOrNil(m.LimitsCPUSet),
+		LimitsCPUShares:         int64OrNil(m.LimitsCPUShares),
 	}
+
+	switch client.DatabaseEngine(m.Engine.ValueString()) {
+	case client.DatabasePostgreSQL:
+		req.PostgresUser = stringOrNil(m.PostgresUser)
+		req.PostgresPassword = stringOrNil(m.PostgresPassword)
+		req.PostgresDB = stringOrNil(m.PostgresDB)
+		req.PostgresInitdbArgs = stringOrNil(m.PostgresInitdbArgs)
+		req.PostgresHostAuthMethod = stringOrNil(m.PostgresHostAuthMethod)
+		req.PostgresConf = stringOrNil(m.PostgresConf)
+	case client.DatabaseMySQL:
+		req.MysqlRootPassword = stringOrNil(m.MysqlRootPassword)
+		req.MysqlPassword = stringOrNil(m.MysqlPassword)
+		req.MysqlUser = stringOrNil(m.MysqlUser)
+		req.MysqlDatabase = stringOrNil(m.MysqlDatabase)
+	case client.DatabaseMariaDB:
+		req.MariadbRootPassword = stringOrNil(m.MariadbRootPassword)
+		req.MariadbPassword = stringOrNil(m.MariadbPassword)
+		req.MariadbUser = stringOrNil(m.MariadbUser)
+		req.MariadbDatabase = stringOrNil(m.MariadbDatabase)
+	case client.DatabaseMongoDB:
+		req.MongoInitdbRootUsername = stringOrNil(m.MongoInitdbRootUsername)
+		req.MongoInitdbRootPassword = stringOrNil(m.MongoInitdbRootPassword)
+		req.MongoInitdbDatabase = stringOrNil(m.MongoInitdbDatabase)
+	case client.DatabaseRedis:
+		req.RedisPassword = stringOrNil(m.RedisPassword)
+	case client.DatabaseKeyDB:
+		req.KeydbPassword = stringOrNil(m.KeydbPassword)
+	case client.DatabaseDragonfly:
+		req.DragonflyPassword = stringOrNil(m.DragonflyPassword)
+	case client.DatabaseClickhouse:
+		req.ClickhouseAdminUser = stringOrNil(m.ClickhouseAdminUser)
+		req.ClickhouseAdminPassword = stringOrNil(m.ClickhouseAdminPassword)
+	}
+
 	if create {
 		req.ProjectUUID = stringOrNil(m.ProjectUUID)
 		req.EnvironmentName = stringOrNil(m.EnvironmentName)
@@ -321,8 +439,27 @@ func databaseToRequest(m databaseResourceModel, create bool) client.DatabaseRequ
 		req.ServerUUID = stringOrNil(m.ServerUUID)
 		req.DestinationUUID = stringOrNil(m.DestinationUUID)
 		req.InstantDeploy = boolOrNil(m.InstantDeploy)
+	} else {
+		// Health check fields are update-only: absent from every create
+		// endpoint's allowed-fields list (confirmed against the controller
+		// source), so they can only ever be sent on update — Create() applies
+		// a configured value via a follow-up UpdateDatabase call instead.
+		req.HealthCheckEnabled = boolOrNil(m.HealthCheckEnabled)
+		req.HealthCheckInterval = int64OrNil(m.HealthCheckInterval)
+		req.HealthCheckTimeout = int64OrNil(m.HealthCheckTimeout)
+		req.HealthCheckRetries = int64OrNil(m.HealthCheckRetries)
+		req.HealthCheckStartPeriod = int64OrNil(m.HealthCheckStartPeriod)
 	}
 	return req
+}
+
+// databaseHasConfiguredHealthCheck reports whether any health check
+// attribute was configured — used by Create() to decide whether the
+// update-only follow-up PATCH is needed at all.
+func databaseHasConfiguredHealthCheck(m databaseResourceModel) bool {
+	return !m.HealthCheckEnabled.IsNull() || !m.HealthCheckInterval.IsNull() ||
+		!m.HealthCheckTimeout.IsNull() || !m.HealthCheckRetries.IsNull() ||
+		!m.HealthCheckStartPeriod.IsNull()
 }
 
 func (r *databaseResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -348,6 +485,32 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 			err.Error(),
 		)
 		return
+	}
+
+	if databaseHasConfiguredHealthCheck(plan) {
+		// See databaseToRequest: no create endpoint accepts health check
+		// fields, so a configured value needs a follow-up PATCH to actually
+		// take effect. Failure here downgrades to a warning rather than an
+		// error — the database itself was created successfully and must not
+		// be orphaned (untracked in state) over these fields; Read will
+		// simply show them still drifted, prompting a normal Update on the
+		// next apply.
+		updated, err := r.client.UpdateDatabase(ctx, db.UUID, client.DatabaseRequest{
+			HealthCheckEnabled:     boolOrNil(plan.HealthCheckEnabled),
+			HealthCheckInterval:    int64OrNil(plan.HealthCheckInterval),
+			HealthCheckTimeout:     int64OrNil(plan.HealthCheckTimeout),
+			HealthCheckRetries:     int64OrNil(plan.HealthCheckRetries),
+			HealthCheckStartPeriod: int64OrNil(plan.HealthCheckStartPeriod),
+		})
+		if err != nil {
+			resp.Diagnostics.AddWarning(
+				fmt.Sprintf("Database %s created, but its health check could not be applied", db.UUID),
+				fmt.Sprintf("The database was created successfully, but the follow-up update to set "+
+					"the health check fields failed: %s. Re-run apply to retry.", err),
+			)
+		} else {
+			db = updated
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, databaseToModel(db, plan))...)
@@ -467,6 +630,16 @@ func databaseToModel(d *client.Database, prior databaseResourceModel) databaseRe
 	// null-preservation.
 	m.LimitsMemory = types.StringValue(d.LimitsMemory)
 	m.LimitsCPUs = types.StringValue(d.LimitsCPUs)
+	m.LimitsMemorySwap = types.StringValue(d.LimitsMemorySwap)
+	m.LimitsMemorySwappiness = types.Int64Value(d.LimitsMemorySwappiness)
+	m.LimitsMemoryReservation = types.StringValue(d.LimitsMemoryReservation)
+	m.LimitsCPUSet = types.StringValue(d.LimitsCPUSet)
+	m.LimitsCPUShares = types.Int64Value(d.LimitsCPUShares)
+	m.HealthCheckEnabled = types.BoolValue(d.HealthCheckEnabled)
+	m.HealthCheckInterval = types.Int64Value(d.HealthCheckInterval)
+	m.HealthCheckTimeout = types.Int64Value(d.HealthCheckTimeout)
+	m.HealthCheckRetries = types.Int64Value(d.HealthCheckRetries)
+	m.HealthCheckStartPeriod = types.Int64Value(d.HealthCheckStartPeriod)
 	m.Description = keepNullIfEmpty(d.Description, prior.Description)
 	if d.PublicPort != nil {
 		m.PublicPort = types.Int64Value(*d.PublicPort)
@@ -479,6 +652,8 @@ func databaseToModel(d *client.Database, prior databaseResourceModel) databaseRe
 	m.PostgresUser = keepPriorIfHidden(d.PostgresUser, prior.PostgresUser)
 	m.PostgresPassword = keepPriorIfHidden(d.PostgresPassword, prior.PostgresPassword)
 	m.PostgresDB = keepPriorIfHidden(d.PostgresDB, prior.PostgresDB)
+	m.PostgresInitdbArgs = keepPriorIfHidden(d.PostgresInitdbArgs, prior.PostgresInitdbArgs)
+	m.PostgresHostAuthMethod = keepPriorIfHidden(d.PostgresHostAuthMethod, prior.PostgresHostAuthMethod)
 	m.MysqlRootPassword = keepPriorIfHidden(d.MysqlRootPassword, prior.MysqlRootPassword)
 	m.MysqlPassword = keepPriorIfHidden(d.MysqlPassword, prior.MysqlPassword)
 	m.MysqlUser = keepPriorIfHidden(d.MysqlUser, prior.MysqlUser)

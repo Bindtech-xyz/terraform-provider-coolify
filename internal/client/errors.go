@@ -41,6 +41,20 @@ func (e *Error) Error() string {
 		}
 	}
 
+	// Message is Coolify's own {"message": "..."} field, decoded — but a
+	// request can also be rejected by something in front of Coolify (a proxy,
+	// an edge auth layer) whose response never matches that shape at all, in
+	// which case Message silently falls back to the bare HTTP status text and
+	// the actual explanation only exists in the raw body. Rather than force
+	// whoever hits this to go re-run the request with curl to see it (found
+	// live: exactly that happened diagnosing a 403 from Coolify's own
+	// allowed_ips gate), always surface it — the minor duplication when Body
+	// is already just `{"message": "..."}` costs far less than a diagnosis
+	// silently withheld.
+	if e.Body != "" {
+		fmt.Fprintf(&b, "\n  body: %s", e.Body)
+	}
+
 	return b.String()
 }
 
@@ -67,4 +81,26 @@ func IsUnauthorized(err error) bool {
 	}
 	return apiErr.StatusCode == http.StatusUnauthorized ||
 		(apiErr.StatusCode == http.StatusBadRequest && strings.Contains(apiErr.Message, "token"))
+}
+
+// IsBlockedByAllowedIPs reports whether err is Coolify's own instance-level IP
+// allowlist rejecting the caller — a gate entirely separate from the bearer
+// token, enforced by ApiAllowed middleware before the request ever reaches a
+// controller. Confirmed against the middleware source: always 403 with this
+// exact message, regardless of token validity.
+func IsBlockedByAllowedIPs(err error) bool {
+	var apiErr *Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden &&
+		apiErr.Message == "You are not allowed to access the API."
+}
+
+// IsAPIDisabled reports whether err is Coolify's own REST API being turned
+// off instance-wide (coolify_api_settings.api_enabled = false, or toggled
+// off some other way — e.g. the UI). Same ApiAllowed middleware, checked
+// before allowed_ips, so this and IsBlockedByAllowedIPs are mutually
+// exclusive.
+func IsAPIDisabled(err error) bool {
+	var apiErr *Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden &&
+		apiErr.Message == "API is disabled."
 }

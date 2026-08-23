@@ -40,6 +40,7 @@ type Application struct {
 	PortsMappings           string `json:"ports_mappings"`
 	Dockerfile              string `json:"dockerfile"`
 	DockerfileLocation      string `json:"dockerfile_location"`
+	DockerfileTargetBuild   string `json:"dockerfile_target_build"`
 	DockerRegistryImageName string `json:"docker_registry_image_name"`
 	DockerRegistryImageTag  string `json:"docker_registry_image_tag"`
 	DockerComposeLocation   string `json:"docker_compose_location"`
@@ -52,9 +53,44 @@ type Application struct {
 	RedirectBehaviour       string `json:"redirect"`
 	LimitsMemory            string `json:"limits_memory"`
 	LimitsCPUs              string `json:"limits_cpus"`
-	Status                  string `json:"status"`
-	EnvironmentID           int64  `json:"environment_id"`
-	DestinationID           int64  `json:"destination_id"`
+	// LimitsMemorySwappiness and LimitsCPUShares are genuine integer columns
+	// (confirmed against the migrations), unlike every other limits_* field —
+	// see the identical note on client.Database.
+	LimitsMemorySwap        string `json:"limits_memory_swap"`
+	LimitsMemorySwappiness  int64  `json:"limits_memory_swappiness"`
+	LimitsMemoryReservation string `json:"limits_memory_reservation"`
+	LimitsCPUSet            string `json:"limits_cpuset"`
+	LimitsCPUShares         int64  `json:"limits_cpu_shares"`
+	// ManualWebhookSecret* are `$hidden` on the Application model — echoed
+	// only to a token with the read:sensitive ability, same as
+	// GithubApp.client_secret/webhook_secret.
+	ManualWebhookSecretGithub    string `json:"manual_webhook_secret_github"`
+	ManualWebhookSecretGitlab    string `json:"manual_webhook_secret_gitlab"`
+	ManualWebhookSecretBitbucket string `json:"manual_webhook_secret_bitbucket"`
+	ManualWebhookSecretGitea     string `json:"manual_webhook_secret_gitea"`
+
+	// Health check. HealthCheckReturnCode/Interval/Timeout/Retries/StartPeriod
+	// are genuine integer columns (confirmed against the migration), like
+	// limits_memory_swappiness/limits_cpu_shares above; every other
+	// health_check_* field is a string column.
+	HealthCheckEnabled      bool   `json:"health_check_enabled"`
+	HealthCheckPath         string `json:"health_check_path"`
+	HealthCheckPort         string `json:"health_check_port"`
+	HealthCheckHost         string `json:"health_check_host"`
+	HealthCheckMethod       string `json:"health_check_method"`
+	HealthCheckReturnCode   int64  `json:"health_check_return_code"`
+	HealthCheckScheme       string `json:"health_check_scheme"`
+	HealthCheckResponseText string `json:"health_check_response_text"`
+	HealthCheckInterval     int64  `json:"health_check_interval"`
+	HealthCheckTimeout      int64  `json:"health_check_timeout"`
+	HealthCheckRetries      int64  `json:"health_check_retries"`
+	HealthCheckStartPeriod  int64  `json:"health_check_start_period"`
+	HealthCheckType         string `json:"health_check_type"`
+	HealthCheckCommand      string `json:"health_check_command"`
+
+	Status        string `json:"status"`
+	EnvironmentID int64  `json:"environment_id"`
+	DestinationID int64  `json:"destination_id"`
 }
 
 // ApplicationRequest is the union body for the five create endpoints and for
@@ -80,7 +116,13 @@ type ApplicationRequest struct {
 	GithubAppUUID  *string `json:"github_app_uuid,omitempty"`
 
 	// Docker sources.
-	Dockerfile              *string `json:"dockerfile,omitempty"` // base64-encoded
+	Dockerfile         *string `json:"dockerfile,omitempty"` // base64-encoded, create-only (see CLAUDE.md)
+	DockerfileLocation *string `json:"dockerfile_location,omitempty"`
+	// DockerfileTargetBuild is the inverse of Dockerfile: accepted by
+	// update_by_uuid but absent from every create endpoint's allowed-fields
+	// list (confirmed against the controller source) — set it via a
+	// follow-up PATCH after create, never in the create body itself.
+	DockerfileTargetBuild   *string `json:"dockerfile_target_build,omitempty"`
 	DockerRegistryImageName *string `json:"docker_registry_image_name,omitempty"`
 	DockerRegistryImageTag  *string `json:"docker_registry_image_tag,omitempty"`
 
@@ -100,6 +142,17 @@ type ApplicationRequest struct {
 	PostDeploymentCommand  *string `json:"post_deployment_command,omitempty"`
 	WatchPaths             *string `json:"watch_paths,omitempty"`
 
+	// Manual webhook secrets (for Coolify's own /webhooks/source/*/events/manual
+	// endpoints, independent of any git-App-managed webhook). Accepted by both
+	// create and update — no whitelist mismatch, unlike dockerfile*. Coolify
+	// generates a random 40-char value itself when left unset (Application's
+	// `creating` model event, `??=`), so these are Optional+Computed, not
+	// Required.
+	ManualWebhookSecretGithub    *string `json:"manual_webhook_secret_github,omitempty"`
+	ManualWebhookSecretGitlab    *string `json:"manual_webhook_secret_gitlab,omitempty"`
+	ManualWebhookSecretBitbucket *string `json:"manual_webhook_secret_bitbucket,omitempty"`
+	ManualWebhookSecretGitea     *string `json:"manual_webhook_secret_gitea,omitempty"`
+
 	// Domains.
 	Domains            *string `json:"domains,omitempty"`
 	Redirect           *string `json:"redirect,omitempty"` // www|non-www|both
@@ -116,13 +169,29 @@ type ApplicationRequest struct {
 	InstantDeploy               *bool `json:"instant_deploy,omitempty"`
 
 	// Health check.
-	HealthCheckEnabled *bool   `json:"health_check_enabled,omitempty"`
-	HealthCheckPath    *string `json:"health_check_path,omitempty"`
-	HealthCheckPort    *string `json:"health_check_port,omitempty"`
+	HealthCheckEnabled      *bool   `json:"health_check_enabled,omitempty"`
+	HealthCheckPath         *string `json:"health_check_path,omitempty"`
+	HealthCheckPort         *string `json:"health_check_port,omitempty"`
+	HealthCheckHost         *string `json:"health_check_host,omitempty"`
+	HealthCheckMethod       *string `json:"health_check_method,omitempty"`
+	HealthCheckReturnCode   *int64  `json:"health_check_return_code,omitempty"`
+	HealthCheckScheme       *string `json:"health_check_scheme,omitempty"`
+	HealthCheckResponseText *string `json:"health_check_response_text,omitempty"`
+	HealthCheckInterval     *int64  `json:"health_check_interval,omitempty"`
+	HealthCheckTimeout      *int64  `json:"health_check_timeout,omitempty"`
+	HealthCheckRetries      *int64  `json:"health_check_retries,omitempty"`
+	HealthCheckStartPeriod  *int64  `json:"health_check_start_period,omitempty"`
+	HealthCheckType         *string `json:"health_check_type,omitempty"`
+	HealthCheckCommand      *string `json:"health_check_command,omitempty"`
 
 	// Limits.
-	LimitsMemory *string `json:"limits_memory,omitempty"`
-	LimitsCPUs   *string `json:"limits_cpus,omitempty"`
+	LimitsMemory            *string `json:"limits_memory,omitempty"`
+	LimitsCPUs              *string `json:"limits_cpus,omitempty"`
+	LimitsMemorySwap        *string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int64  `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation *string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUSet            *string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int64  `json:"limits_cpu_shares,omitempty"`
 }
 
 // applicationCreatePaths maps a type to its POST endpoint.

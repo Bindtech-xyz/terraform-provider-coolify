@@ -31,6 +31,12 @@ func TestApplicationServerDefaultedAttributesAreComputed(t *testing.T) {
 	for _, name := range []string{
 		"base_directory", "limits_memory", "limits_cpus",
 		"git_branch", "git_commit_sha", "build_pack", "static_image",
+		"dockerfile_location", "limits_memory_swap", "limits_memory_swappiness",
+		"limits_memory_reservation", "limits_cpuset", "limits_cpu_shares",
+		"health_check_enabled", "health_check_path", "health_check_host",
+		"health_check_method", "health_check_return_code", "health_check_scheme",
+		"health_check_interval", "health_check_timeout", "health_check_retries",
+		"health_check_start_period", "health_check_type",
 	} {
 		attr, ok := schemaResp.Schema.Attributes[name]
 		if !ok {
@@ -60,7 +66,12 @@ func TestDatabaseLimitsAreComputed(t *testing.T) {
 		t.Fatalf("Schema: %v", schemaResp.Diagnostics)
 	}
 
-	for _, name := range []string{"limits_memory", "limits_cpus"} {
+	for _, name := range []string{
+		"limits_memory", "limits_cpus", "limits_memory_swap", "limits_memory_swappiness",
+		"limits_memory_reservation", "limits_cpuset", "limits_cpu_shares",
+		"health_check_enabled", "health_check_interval", "health_check_timeout",
+		"health_check_retries", "health_check_start_period",
+	} {
 		attr, ok := schemaResp.Schema.Attributes[name]
 		if !ok {
 			t.Fatalf("schema is missing %q", name)
@@ -93,5 +104,30 @@ func TestDatabaseBackupDatabasesToBackupIsComputed(t *testing.T) {
 	if !attr.IsComputed() {
 		t.Error("\"databases_to_backup\" must be Computed: Coolify defaults it to the engine's " +
 			"logical database name when unset, never \"\"")
+	}
+}
+
+// TestGithubAppOrganizationIsComputed locks in a regression reported live:
+// organization was Optional-only, but Coolify's manifest-flow install
+// captures it from GitHub itself for an organization-owned App, independent
+// of anything configured -- invisible with a personal-account App (the only
+// kind exercised until now), since organization is genuinely null there, but
+// a "provider produced inconsistent result" on the very first apply against
+// any org-owned App.
+func TestGithubAppOrganizationIsComputed(t *testing.T) {
+	ctx := context.Background()
+	var schemaResp resource.SchemaResponse
+	(&githubAppResource{}).Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("Schema: %v", schemaResp.Diagnostics)
+	}
+
+	attr, ok := schemaResp.Schema.Attributes["organization"]
+	if !ok {
+		t.Fatal("schema is missing \"organization\"")
+	}
+	if !attr.IsComputed() {
+		t.Error("\"organization\" must be Computed: Coolify populates it from GitHub for an " +
+			"organization-owned App even when left unset in config")
 	}
 }

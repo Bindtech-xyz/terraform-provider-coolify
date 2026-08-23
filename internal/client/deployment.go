@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -88,10 +89,65 @@ func (c *Client) Deploy(ctx context.Context, uuids, tags string, force bool) ([]
 	if err := c.post(ctx, "/deploy?"+q.Encode(), nil, &out); err != nil {
 		return nil, err
 	}
-	if len(out.Deployments) > 0 {
-		return out.Deployments, nil
+	results := out.Deployments
+	if len(results) == 0 {
+		results = out.Details
 	}
-	return out.Details, nil
+
+	for i := range results {
+		if !isSkippedDeploymentMessage(results[i].Message) {
+			continue
+		}
+		// Confirmed against the controller source
+		// (DeployController::deploy_resource / queue_application_deployment
+		// in bootstrap/helpers/applications.php): when a deployment is
+		// already queued/in-progress for the same application+commit (e.g.
+		// coolify_application's own instant_deploy already started one at
+		// create time), queue_application_deployment returns the REAL
+		// existing deployment's uuid in its "skipped" result — but
+		// deploy_resource discards that and returns its own uuid, generated
+		// via new_public_id() *before* the queue check, which was never
+		// written to ApplicationDeploymentQueue. Polling it 404s forever, no
+		// matter how long or how many times — this is not a replication-lag
+		// race, so retrying the same GET cannot help. Resolve the real,
+		// currently-active deployment via the application's own deployment
+		// list instead; leave the phantom uuid in place if that also fails
+		// (no worse than before).
+		if real, err := c.resolveActiveDeployment(ctx, results[i].ResourceUUID); err == nil {
+			results[i].DeploymentUUID = real
+		}
+	}
+	return results, nil
+}
+
+// isSkippedDeploymentMessage matches queue_application_deployment's exact
+// "skipped" message (bootstrap/helpers/applications.php). Substring, not
+// exact-equality, so a minor upstream wording tweak degrades to "resolution
+// not attempted" rather than a broken match.
+func isSkippedDeploymentMessage(message string) bool {
+	return strings.Contains(message, "already queued for this commit")
+}
+
+// resolveActiveDeployment finds the application's currently in-progress or
+// queued deployment. ListApplicationDeployments returns newest-first
+// (Application::deployments()'s default sort), so the first status match
+// wins; if none is active (the race window already closed), the most recent
+// entry overall is still a better answer than a uuid that was never
+// persisted at all.
+func (c *Client) resolveActiveDeployment(ctx context.Context, applicationUUID string) (string, error) {
+	deployments, err := c.ListApplicationDeployments(ctx, applicationUUID)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range deployments {
+		if d.Status == "in_progress" || d.Status == "queued" {
+			return d.DeploymentUUID, nil
+		}
+	}
+	if len(deployments) > 0 {
+		return deployments[0].DeploymentUUID, nil
+	}
+	return "", fmt.Errorf("no deployment found for application %s", applicationUUID)
 }
 
 // GetDeployment reads one deployment's current status by its deployment
@@ -124,6 +180,8 @@ func (c *Client) WaitForDeploymentCompletion(ctx context.Context, deploymentUUID
 			return d, nil
 		case "failed":
 			return d, fmt.Errorf("deployment %s failed", deploymentUUID)
+		case "cancelled-by-user":
+			return d, fmt.Errorf("deployment %s was cancelled", deploymentUUID)
 		}
 
 		select {

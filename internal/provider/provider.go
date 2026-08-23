@@ -205,13 +205,33 @@ func (p *coolifyProvider) Configure(ctx context.Context, req provider.ConfigureR
 	// practitioners get a clear error at plan time instead of one per resource.
 	version, err := apiClient.Version(ctx)
 	if err != nil {
-		if client.IsUnauthorized(err) {
+		switch {
+		case client.IsUnauthorized(err):
 			resp.Diagnostics.AddAttributeError(
 				pathRoot("token"),
 				"Invalid Coolify API token",
 				"The Coolify instance at "+apiClient.Endpoint()+" rejected the token: "+err.Error(),
 			)
-		} else {
+		case client.IsBlockedByAllowedIPs(err):
+			resp.Diagnostics.AddError(
+				"Blocked by Coolify's IP allowlist",
+				"The Coolify instance at "+apiClient.Endpoint()+" has an instance-level IP allowlist "+
+					"(Settings → Advanced → Allowed IPs) that rejected the request's source address — a gate "+
+					"entirely separate from the token and from any Cloudflare Access / edge auth in front of "+
+					"the instance. This provider has no way to manage that setting: Coolify exposes it only "+
+					"through the UI, there is no REST API route for it. Note that Coolify seeds this list "+
+					"with the server's own public IP at install time, so behind a reverse tunnel this can "+
+					"start rejecting requests again on its own, without anything having changed in your "+
+					"configuration.\n\n"+err.Error(),
+			)
+		case client.IsAPIDisabled(err):
+			resp.Diagnostics.AddError(
+				"Coolify's REST API is disabled",
+				"The Coolify instance at "+apiClient.Endpoint()+" has its REST API turned off instance-wide "+
+					"(see coolify_api_settings, or Settings → Advanced in the UI) — every API call, including "+
+					"this one, is rejected regardless of token validity until it's re-enabled.\n\n"+err.Error(),
+			)
+		default:
 			resp.Diagnostics.AddError(
 				"Unable to reach Coolify",
 				"Checking connectivity against "+apiClient.Endpoint()+" failed: "+err.Error(),

@@ -43,6 +43,30 @@ type Database struct {
 	Status        string `json:"status"`
 	LimitsMemory  string `json:"limits_memory"`
 	LimitsCPUs    string `json:"limits_cpus"`
+	// LimitsMemorySwappiness and LimitsCPUShares are genuine integer columns
+	// (confirmed against the migrations — `$table->integer(...)`, no Eloquent
+	// cast overriding it), unlike every other limits_* field, which are all
+	// strings even though they read as numbers (e.g. "0" for unlimited).
+	// Decoding a JSON number into a Go string field errors, so getting this
+	// wrong breaks every database read, not just these two attributes.
+	LimitsMemorySwap        string `json:"limits_memory_swap"`
+	LimitsMemorySwappiness  int64  `json:"limits_memory_swappiness"`
+	LimitsMemoryReservation string `json:"limits_memory_reservation"`
+	LimitsCPUSet            string `json:"limits_cpuset"`
+	LimitsCPUShares         int64  `json:"limits_cpu_shares"`
+
+	// Health check — all 5 columns are integers except HealthCheckEnabled
+	// (confirmed against the `add_health_check_to_standalone_databases`
+	// migration, applied to all 8 engine tables identically). Unlike every
+	// other database field, these are update-only: absent from every create
+	// endpoint's $allowedFields (confirmed against the controller source —
+	// only merged into update_by_uuid's), so DatabaseRequest must never carry
+	// them on create.
+	HealthCheckEnabled     bool  `json:"health_check_enabled"`
+	HealthCheckInterval    int64 `json:"health_check_interval"`
+	HealthCheckTimeout     int64 `json:"health_check_timeout"`
+	HealthCheckRetries     int64 `json:"health_check_retries"`
+	HealthCheckStartPeriod int64 `json:"health_check_start_period"`
 
 	// PostgreSQL.
 	PostgresUser           string `json:"postgres_user"`
@@ -104,6 +128,20 @@ type DatabaseRequest struct {
 	InstantDeploy *bool   `json:"instant_deploy,omitempty"`
 	LimitsMemory  *string `json:"limits_memory,omitempty"`
 	LimitsCPUs    *string `json:"limits_cpus,omitempty"`
+
+	LimitsMemorySwap        *string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int64  `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation *string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUSet            *string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int64  `json:"limits_cpu_shares,omitempty"`
+
+	// Health check — update-only, see the note on client.Database. Callers
+	// must never set these when create is true.
+	HealthCheckEnabled     *bool  `json:"health_check_enabled,omitempty"`
+	HealthCheckInterval    *int64 `json:"health_check_interval,omitempty"`
+	HealthCheckTimeout     *int64 `json:"health_check_timeout,omitempty"`
+	HealthCheckRetries     *int64 `json:"health_check_retries,omitempty"`
+	HealthCheckStartPeriod *int64 `json:"health_check_start_period,omitempty"`
 
 	// PostgreSQL.
 	PostgresUser           *string `json:"postgres_user,omitempty"`

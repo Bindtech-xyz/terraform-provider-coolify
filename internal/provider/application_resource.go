@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -59,6 +61,8 @@ type applicationResourceModel struct {
 	PrivateKeyUUID          types.String `tfsdk:"private_key_uuid"`
 	GithubAppUUID           types.String `tfsdk:"github_app_uuid"`
 	Dockerfile              types.String `tfsdk:"dockerfile"`
+	DockerfileLocation      types.String `tfsdk:"dockerfile_location"`
+	DockerfileTargetBuild   types.String `tfsdk:"dockerfile_target_build"`
 	DockerRegistryImageName types.String `tfsdk:"docker_registry_image_name"`
 	DockerRegistryImageTag  types.String `tfsdk:"docker_registry_image_tag"`
 
@@ -77,6 +81,12 @@ type applicationResourceModel struct {
 	PostDeploymentCommand  types.String `tfsdk:"post_deployment_command"`
 	WatchPaths             types.String `tfsdk:"watch_paths"`
 
+	// Manual webhook secrets.
+	ManualWebhookSecretGithub    types.String `tfsdk:"manual_webhook_secret_github"`
+	ManualWebhookSecretGitlab    types.String `tfsdk:"manual_webhook_secret_gitlab"`
+	ManualWebhookSecretBitbucket types.String `tfsdk:"manual_webhook_secret_bitbucket"`
+	ManualWebhookSecretGitea     types.String `tfsdk:"manual_webhook_secret_gitea"`
+
 	// Domains.
 	Domains            types.String `tfsdk:"domains"`
 	Redirect           types.String `tfsdk:"redirect"`
@@ -90,12 +100,30 @@ type applicationResourceModel struct {
 	InstantDeploy               types.Bool `tfsdk:"instant_deploy"`
 
 	// Health check.
-	HealthCheckEnabled types.Bool   `tfsdk:"health_check_enabled"`
-	HealthCheckPath    types.String `tfsdk:"health_check_path"`
+	HealthCheckEnabled      types.Bool   `tfsdk:"health_check_enabled"`
+	HealthCheckPath         types.String `tfsdk:"health_check_path"`
+	HealthCheckPort         types.String `tfsdk:"health_check_port"`
+	HealthCheckHost         types.String `tfsdk:"health_check_host"`
+	HealthCheckMethod       types.String `tfsdk:"health_check_method"`
+	HealthCheckReturnCode   types.Int64  `tfsdk:"health_check_return_code"`
+	HealthCheckScheme       types.String `tfsdk:"health_check_scheme"`
+	HealthCheckResponseText types.String `tfsdk:"health_check_response_text"`
+	HealthCheckInterval     types.Int64  `tfsdk:"health_check_interval"`
+	HealthCheckTimeout      types.Int64  `tfsdk:"health_check_timeout"`
+	HealthCheckRetries      types.Int64  `tfsdk:"health_check_retries"`
+	HealthCheckStartPeriod  types.Int64  `tfsdk:"health_check_start_period"`
+	HealthCheckType         types.String `tfsdk:"health_check_type"`
+	HealthCheckCommand      types.String `tfsdk:"health_check_command"`
 
 	// Limits.
 	LimitsMemory types.String `tfsdk:"limits_memory"`
 	LimitsCPUs   types.String `tfsdk:"limits_cpus"`
+
+	LimitsMemorySwap        types.String `tfsdk:"limits_memory_swap"`
+	LimitsMemorySwappiness  types.Int64  `tfsdk:"limits_memory_swappiness"`
+	LimitsMemoryReservation types.String `tfsdk:"limits_memory_reservation"`
+	LimitsCPUSet            types.String `tfsdk:"limits_cpuset"`
+	LimitsCPUShares         types.Int64  `tfsdk:"limits_cpu_shares"`
 
 	// Read-only.
 	Status types.String `tfsdk:"status"`
@@ -196,7 +224,34 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"dockerfile": schema.StringAttribute{
 				MarkdownDescription: "Base64-encoded Dockerfile content. Setting it selects the " +
-					"dockerfile mode (use `base64encode(file(...))`).",
+					"dockerfile mode (use `base64encode(file(...))`). Coolify's `PATCH` " +
+					"`/applications/{uuid}` rejects this field outright (`This field is not " +
+					"allowed.`) — its allowed-fields whitelist for updates omits `dockerfile` " +
+					"entirely, unlike the create endpoint, which requires it. There is no supported " +
+					"way to change a Dockerfile's content in place, so changing this value forces " +
+					"replacement instead of a doomed update attempt.",
+				Optional:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+			},
+			"dockerfile_location": schema.StringAttribute{
+				MarkdownDescription: "Path to the Dockerfile inside the git repository (e.g. " +
+					"`/Dockerfile.web`). Only meaningful for git-repository sources; Coolify defaults " +
+					"to `/Dockerfile` at the repository root when unset. Accepted by both Coolify's " +
+					"create and update endpoints, unlike `dockerfile`/`dockerfile_target_build` below.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"dockerfile_target_build": schema.StringAttribute{
+				MarkdownDescription: "Named build stage to stop at, for a multi-stage Dockerfile. " +
+					"Coolify's create endpoints all reject this field (confirmed against the " +
+					"controller source — absent from every create allowed-fields list, present only " +
+					"in `update_by_uuid`'s), so a value configured at creation is applied via a " +
+					"follow-up update immediately after — if `instant_deploy` is also set, that first " +
+					"automatic build already started before the follow-up lands and won't see the " +
+					"target stage; later deploys will.",
 				Optional: true,
 			},
 			"docker_registry_image_name": schema.StringAttribute{
@@ -278,6 +333,46 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:            true,
 			},
 
+			// Manual webhook secrets, for Coolify's own
+			// /webhooks/source/{provider}/events/manual endpoints — independent
+			// of any git-App-managed webhook, and useful when the App's own
+			// webhook URL can't be reached (e.g. an instance domain that must
+			// stay `http://` behind a reverse proxy). Accepted on both create
+			// and update; Coolify generates a random 40-character value itself
+			// when left unset.
+			"manual_webhook_secret_github": schema.StringAttribute{
+				MarkdownDescription: "Secret for `/webhooks/source/github/events/manual`. " +
+					"Generated by Coolify if left unset.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"manual_webhook_secret_gitlab": schema.StringAttribute{
+				MarkdownDescription: "Secret for `/webhooks/source/gitlab/events/manual`. " +
+					"Generated by Coolify if left unset.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"manual_webhook_secret_bitbucket": schema.StringAttribute{
+				MarkdownDescription: "Secret for `/webhooks/source/bitbucket/events/manual`. " +
+					"Generated by Coolify if left unset.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"manual_webhook_secret_gitea": schema.StringAttribute{
+				MarkdownDescription: "Secret for `/webhooks/source/gitea/events/manual`. " +
+					"Generated by Coolify if left unset.",
+				Optional:      true,
+				Computed:      true,
+				Sensitive:     true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+
 			// Domains.
 			"domains": schema.StringAttribute{
 				MarkdownDescription: "Comma-separated FQDNs, e.g. `\"https://app.example.com\"`. " +
@@ -322,12 +417,95 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 
 			// Health check.
 			"health_check_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Enable the container health check.",
-				Optional:            true,
+				MarkdownDescription: "Enable the container health check. Coolify defaults unset " +
+					"to `false`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"health_check_path": schema.StringAttribute{
-				MarkdownDescription: "HTTP path probed by the health check (e.g. `/health`).",
+				MarkdownDescription: "HTTP path probed by the health check (e.g. `/health`). " +
+					"Coolify defaults unset to `/`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_port": schema.StringAttribute{
+				MarkdownDescription: "Port probed by the health check, if different from the " +
+					"container's exposed port.",
+				Optional: true,
+			},
+			"health_check_host": schema.StringAttribute{
+				MarkdownDescription: "Host probed by the health check. Coolify defaults unset to " +
+					"`localhost`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_method": schema.StringAttribute{
+				MarkdownDescription: "HTTP method used by the health check. Coolify defaults " +
+					"unset to `GET`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_return_code": schema.Int64Attribute{
+				MarkdownDescription: "Expected HTTP status code. Coolify defaults unset to `200`.",
 				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_scheme": schema.StringAttribute{
+				MarkdownDescription: "`http` or `https`. Coolify defaults unset to `http`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_response_text": schema.StringAttribute{
+				MarkdownDescription: "Substring expected in the response body, if any.",
+				Optional:            true,
+			},
+			"health_check_interval": schema.Int64Attribute{
+				MarkdownDescription: "Seconds between probes. Coolify defaults unset to `5`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_timeout": schema.Int64Attribute{
+				MarkdownDescription: "Seconds before a probe attempt is considered failed. " +
+					"Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_retries": schema.Int64Attribute{
+				MarkdownDescription: "Consecutive failures before the container is marked " +
+					"unhealthy. Coolify defaults unset to `10`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_start_period": schema.Int64Attribute{
+				MarkdownDescription: "Grace period in seconds during which probe failures don't " +
+					"count, for a slow-starting container (e.g. one that runs database " +
+					"migrations before serving traffic). Coolify defaults unset to `5`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"health_check_type": schema.StringAttribute{
+				MarkdownDescription: "`http` (probe an HTTP endpoint) or `cmd` (run " +
+					"`health_check_command` inside the container). Coolify defaults unset to `http`.",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"health_check_command": schema.StringAttribute{
+				MarkdownDescription: "Command run inside the container for `health_check_type = " +
+					"\"cmd\"`. Required for images without `curl`/`wget` (Coolify's default HTTP " +
+					"probe needs one of them and refuses to start otherwise) — e.g. a distroless, " +
+					"scratch, or Bun image can use whatever it already ships.",
+				Optional: true,
 			},
 
 			// Limits.
@@ -344,6 +522,38 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:      true,
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_swap": schema.StringAttribute{
+				MarkdownDescription: "Memory + swap limit (e.g. `1g`). Coolify defaults unset to " +
+					"`0` (unlimited).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_swappiness": schema.Int64Attribute{
+				MarkdownDescription: "Kernel swappiness (0-100). Coolify defaults unset to `60`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+			},
+			"limits_memory_reservation": schema.StringAttribute{
+				MarkdownDescription: "Soft memory reservation (e.g. `256m`). Coolify defaults unset " +
+					"to `0` (none).",
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpuset": schema.StringAttribute{
+				MarkdownDescription: "Comma-separated CPU cores to pin to (e.g. `0,1`).",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"limits_cpu_shares": schema.Int64Attribute{
+				MarkdownDescription: "Relative CPU weight. Coolify defaults unset to `1024`.",
+				Optional:            true,
+				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 
 			// Read-only.
@@ -411,40 +621,70 @@ func (r *applicationResource) Configure(_ context.Context, req resource.Configur
 // toRequest maps the plan to an API body. create toggles placement fields on.
 func applicationToRequest(m applicationResourceModel, create bool) client.ApplicationRequest {
 	req := client.ApplicationRequest{
-		Name:                        stringOrNil(m.Name),
-		Description:                 stringOrNil(m.Description),
-		GitRepository:               stringOrNil(m.GitRepository),
-		GitBranch:                   stringOrNil(m.GitBranch),
-		GitCommitSHA:                stringOrNil(m.GitCommitSHA),
-		Dockerfile:                  stringOrNil(m.Dockerfile),
-		DockerRegistryImageName:     stringOrNil(m.DockerRegistryImageName),
-		DockerRegistryImageTag:      stringOrNil(m.DockerRegistryImageTag),
-		BuildPack:                   stringOrNil(m.BuildPack),
-		StaticImage:                 stringOrNil(m.StaticImage),
-		InstallCommand:              stringOrNil(m.InstallCommand),
-		BuildCommand:                stringOrNil(m.BuildCommand),
-		StartCommand:                stringOrNil(m.StartCommand),
-		BaseDirectory:               stringOrNil(m.BaseDirectory),
-		PublishDirectory:            stringOrNil(m.PublishDirectory),
-		PortsExposes:                stringOrNil(m.PortsExposes),
-		PortsMappings:               stringOrNil(m.PortsMappings),
-		CustomDockerRunOptions:      stringOrNil(m.CustomDockerRunOptions),
-		PreDeploymentCommand:        stringOrNil(m.PreDeploymentCommand),
-		PostDeploymentCommand:       stringOrNil(m.PostDeploymentCommand),
-		WatchPaths:                  stringOrNil(m.WatchPaths),
-		Domains:                     stringOrNil(m.Domains),
-		Redirect:                    stringOrNil(m.Redirect),
-		IsStatic:                    boolOrNil(m.IsStatic),
-		IsAutoDeployEnabled:         boolOrNil(m.IsAutoDeployEnabled),
-		IsForceHTTPSEnabled:         boolOrNil(m.IsForceHTTPSEnabled),
-		IsPreviewDeploymentsEnabled: boolOrNil(m.IsPreviewDeploymentsEnabled),
-		InstantDeploy:               boolOrNil(m.InstantDeploy),
-		HealthCheckEnabled:          boolOrNil(m.HealthCheckEnabled),
-		HealthCheckPath:             stringOrNil(m.HealthCheckPath),
-		LimitsMemory:                stringOrNil(m.LimitsMemory),
-		LimitsCPUs:                  stringOrNil(m.LimitsCPUs),
+		Name:                         stringOrNil(m.Name),
+		Description:                  stringOrNil(m.Description),
+		GitRepository:                stringOrNil(m.GitRepository),
+		GitBranch:                    stringOrNil(m.GitBranch),
+		GitCommitSHA:                 stringOrNil(m.GitCommitSHA),
+		DockerfileLocation:           stringOrNil(m.DockerfileLocation),
+		DockerRegistryImageName:      stringOrNil(m.DockerRegistryImageName),
+		DockerRegistryImageTag:       stringOrNil(m.DockerRegistryImageTag),
+		BuildPack:                    stringOrNil(m.BuildPack),
+		StaticImage:                  stringOrNil(m.StaticImage),
+		InstallCommand:               stringOrNil(m.InstallCommand),
+		BuildCommand:                 stringOrNil(m.BuildCommand),
+		StartCommand:                 stringOrNil(m.StartCommand),
+		BaseDirectory:                stringOrNil(m.BaseDirectory),
+		PublishDirectory:             stringOrNil(m.PublishDirectory),
+		PortsExposes:                 stringOrNil(m.PortsExposes),
+		PortsMappings:                stringOrNil(m.PortsMappings),
+		CustomDockerRunOptions:       stringOrNil(m.CustomDockerRunOptions),
+		PreDeploymentCommand:         stringOrNil(m.PreDeploymentCommand),
+		PostDeploymentCommand:        stringOrNil(m.PostDeploymentCommand),
+		WatchPaths:                   stringOrNil(m.WatchPaths),
+		ManualWebhookSecretGithub:    stringOrNil(m.ManualWebhookSecretGithub),
+		ManualWebhookSecretGitlab:    stringOrNil(m.ManualWebhookSecretGitlab),
+		ManualWebhookSecretBitbucket: stringOrNil(m.ManualWebhookSecretBitbucket),
+		ManualWebhookSecretGitea:     stringOrNil(m.ManualWebhookSecretGitea),
+		Domains:                      stringOrNil(m.Domains),
+		Redirect:                     stringOrNil(m.Redirect),
+		IsStatic:                     boolOrNil(m.IsStatic),
+		IsAutoDeployEnabled:          boolOrNil(m.IsAutoDeployEnabled),
+		IsForceHTTPSEnabled:          boolOrNil(m.IsForceHTTPSEnabled),
+		IsPreviewDeploymentsEnabled:  boolOrNil(m.IsPreviewDeploymentsEnabled),
+		InstantDeploy:                boolOrNil(m.InstantDeploy),
+		HealthCheckEnabled:           boolOrNil(m.HealthCheckEnabled),
+		HealthCheckPath:              stringOrNil(m.HealthCheckPath),
+		HealthCheckPort:              stringOrNil(m.HealthCheckPort),
+		HealthCheckHost:              stringOrNil(m.HealthCheckHost),
+		HealthCheckMethod:            stringOrNil(m.HealthCheckMethod),
+		HealthCheckReturnCode:        int64OrNil(m.HealthCheckReturnCode),
+		HealthCheckScheme:            stringOrNil(m.HealthCheckScheme),
+		HealthCheckResponseText:      stringOrNil(m.HealthCheckResponseText),
+		HealthCheckInterval:          int64OrNil(m.HealthCheckInterval),
+		HealthCheckTimeout:           int64OrNil(m.HealthCheckTimeout),
+		HealthCheckRetries:           int64OrNil(m.HealthCheckRetries),
+		HealthCheckStartPeriod:       int64OrNil(m.HealthCheckStartPeriod),
+		HealthCheckType:              stringOrNil(m.HealthCheckType),
+		HealthCheckCommand:           stringOrNil(m.HealthCheckCommand),
+		LimitsMemory:                 stringOrNil(m.LimitsMemory),
+		LimitsCPUs:                   stringOrNil(m.LimitsCPUs),
+		LimitsMemorySwap:             stringOrNil(m.LimitsMemorySwap),
+		LimitsMemorySwappiness:       int64OrNil(m.LimitsMemorySwappiness),
+		LimitsMemoryReservation:      stringOrNil(m.LimitsMemoryReservation),
+		LimitsCPUSet:                 stringOrNil(m.LimitsCPUSet),
+		LimitsCPUShares:              int64OrNil(m.LimitsCPUShares),
 	}
 	if create {
+		// dockerfile is create-only: ApplicationsController::update_by_uuid's
+		// allowed-fields whitelist omits it entirely (confirmed against the
+		// controller source — dockerfile_location/dockerfile_target_build are
+		// there, dockerfile itself isn't), so PATCH always rejects it with
+		// "This field is not allowed." regardless of value. Sending it only on
+		// create keeps every other update from tripping over this, and the
+		// dockerfile attribute's RequiresReplace plan modifier means Update is
+		// never even called when it actually changes.
+		req.Dockerfile = stringOrNil(m.Dockerfile)
 		req.ProjectUUID = stringOrNil(m.ProjectUUID)
 		req.EnvironmentName = stringOrNil(m.EnvironmentName)
 		req.EnvironmentUUID = stringOrNil(m.EnvironmentUUID)
@@ -453,6 +693,13 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		req.PrivateKeyUUID = stringOrNil(m.PrivateKeyUUID)
 		req.GithubAppUUID = stringOrNil(m.GithubAppUUID)
 		req.AutogenerateDomain = boolOrNil(m.AutogenerateDomain)
+	} else {
+		// dockerfile_target_build is the inverse of dockerfile: accepted by
+		// update_by_uuid but absent from every create endpoint's
+		// allowed-fields list (confirmed against the controller source), so
+		// it can only ever be sent on update — Create() applies a configured
+		// value via a follow-up UpdateApplication call right after creating.
+		req.DockerfileTargetBuild = stringOrNil(m.DockerfileTargetBuild)
 	}
 	return req
 }
@@ -475,6 +722,28 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	tflog.Trace(ctx, "created application", map[string]any{"uuid": app.UUID, "type": string(appType)})
+
+	if !plan.DockerfileTargetBuild.IsNull() {
+		// See applicationToRequest: no create endpoint accepts
+		// dockerfile_target_build, so a configured value needs a follow-up
+		// PATCH to actually take effect. Failure here downgrades to a warning
+		// rather than an error — the application itself was created
+		// successfully and must not be orphaned (untracked in state) over a
+		// field that Read will simply show as still drifted, prompting a
+		// normal Update on the next apply.
+		updated, err := r.client.UpdateApplication(ctx, app.UUID, client.ApplicationRequest{
+			DockerfileTargetBuild: stringOrNil(plan.DockerfileTargetBuild),
+		})
+		if err != nil {
+			resp.Diagnostics.AddWarning(
+				fmt.Sprintf("Application %s created, but dockerfile_target_build could not be applied", app.UUID),
+				fmt.Sprintf("The application was created successfully, but the follow-up update to set "+
+					"dockerfile_target_build failed: %s. Re-run apply to retry.", err),
+			)
+		} else {
+			app = updated
+		}
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, applicationToModel(app, plan))...)
 }
@@ -561,9 +830,12 @@ func applicationToModel(a *client.Application, prior applicationResourceModel) a
 	m.InstallCommand = keepNullIfEmpty(a.InstallCommand, prior.InstallCommand)
 	m.BuildCommand = keepNullIfEmpty(a.BuildCommand, prior.BuildCommand)
 	m.StartCommand = keepNullIfEmpty(a.StartCommand, prior.StartCommand)
-	// base_directory is Computed (Coolify defaults unset to "/", never ""):
-	// adopt directly, no null-preservation — "" never legitimately occurs.
+	// base_directory and dockerfile_location are Computed (Coolify defaults
+	// each unset to "/"/"/Dockerfile", never ""): adopt directly, no
+	// null-preservation — "" never legitimately occurs.
 	m.BaseDirectory = types.StringValue(a.BaseDirectory)
+	m.DockerfileLocation = types.StringValue(a.DockerfileLocation)
+	m.DockerfileTargetBuild = keepNullIfEmpty(a.DockerfileTargetBuild, prior.DockerfileTargetBuild)
 	m.PublishDirectory = keepNullIfEmpty(a.PublishDirectory, prior.PublishDirectory)
 	m.PortsExposes = keepNullIfEmpty(a.PortsExposes, prior.PortsExposes)
 	m.PortsMappings = keepNullIfEmpty(a.PortsMappings, prior.PortsMappings)
@@ -572,10 +844,41 @@ func applicationToModel(a *client.Application, prior applicationResourceModel) a
 	m.PostDeploymentCommand = keepNullIfEmpty(a.PostDeploymentCommand, prior.PostDeploymentCommand)
 	m.WatchPaths = keepNullIfEmpty(a.WatchPaths, prior.WatchPaths)
 	m.DockerRegistryImageTag = keepNullIfEmpty(a.DockerRegistryImageTag, prior.DockerRegistryImageTag)
-	// Both Computed (Coolify defaults unset to "0"/unlimited, never ""):
-	// adopt directly, no null-preservation — "" never legitimately occurs.
+	// $hidden on the Application model — echoed only to a token with
+	// read:sensitive, same treatment as coolify_github_app's secrets.
+	m.ManualWebhookSecretGithub = keepPriorIfHidden(a.ManualWebhookSecretGithub, prior.ManualWebhookSecretGithub)
+	m.ManualWebhookSecretGitlab = keepPriorIfHidden(a.ManualWebhookSecretGitlab, prior.ManualWebhookSecretGitlab)
+	m.ManualWebhookSecretBitbucket = keepPriorIfHidden(a.ManualWebhookSecretBitbucket, prior.ManualWebhookSecretBitbucket)
+	m.ManualWebhookSecretGitea = keepPriorIfHidden(a.ManualWebhookSecretGitea, prior.ManualWebhookSecretGitea)
+	// Computed, Coolify defaults each unset to a non-empty/non-zero value:
+	// adopt directly, no null-preservation.
+	m.HealthCheckEnabled = types.BoolValue(a.HealthCheckEnabled)
+	m.HealthCheckPath = types.StringValue(a.HealthCheckPath)
+	m.HealthCheckHost = types.StringValue(a.HealthCheckHost)
+	m.HealthCheckMethod = types.StringValue(a.HealthCheckMethod)
+	m.HealthCheckReturnCode = types.Int64Value(a.HealthCheckReturnCode)
+	m.HealthCheckScheme = types.StringValue(a.HealthCheckScheme)
+	m.HealthCheckInterval = types.Int64Value(a.HealthCheckInterval)
+	m.HealthCheckTimeout = types.Int64Value(a.HealthCheckTimeout)
+	m.HealthCheckRetries = types.Int64Value(a.HealthCheckRetries)
+	m.HealthCheckStartPeriod = types.Int64Value(a.HealthCheckStartPeriod)
+	m.HealthCheckType = types.StringValue(a.HealthCheckType)
+	// Genuinely nullable, no server-side default (confirmed against the
+	// migration and model source: plain fillable, no mutator/booted default):
+	// null-preserve instead.
+	m.HealthCheckPort = keepNullIfEmpty(a.HealthCheckPort, prior.HealthCheckPort)
+	m.HealthCheckResponseText = keepNullIfEmpty(a.HealthCheckResponseText, prior.HealthCheckResponseText)
+	m.HealthCheckCommand = keepNullIfEmpty(a.HealthCheckCommand, prior.HealthCheckCommand)
+	// All Computed (Coolify defaults each unset, never ""/0 by omission):
+	// adopt directly, no null-preservation — the empty/zero value never
+	// legitimately means "unconfigured" here.
 	m.LimitsMemory = types.StringValue(a.LimitsMemory)
 	m.LimitsCPUs = types.StringValue(a.LimitsCPUs)
+	m.LimitsMemorySwap = types.StringValue(a.LimitsMemorySwap)
+	m.LimitsMemorySwappiness = types.Int64Value(a.LimitsMemorySwappiness)
+	m.LimitsMemoryReservation = types.StringValue(a.LimitsMemoryReservation)
+	m.LimitsCPUSet = types.StringValue(a.LimitsCPUSet)
+	m.LimitsCPUShares = types.Int64Value(a.LimitsCPUShares)
 
 	return m
 }

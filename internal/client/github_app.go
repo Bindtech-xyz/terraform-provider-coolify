@@ -20,7 +20,21 @@ type GithubApp struct {
 	AppID          int64  `json:"app_id"`
 	InstallationID int64  `json:"installation_id"`
 	ClientID       string `json:"client_id"`
-	IsSystemWide   bool   `json:"is_system_wide"`
+	// ClientSecret and WebhookSecret ARE present on the JSON response —
+	// GithubApp's $hidden only lists them, and Eloquent's $hidden is
+	// overridden per-request by removeSensitiveData() in the controller,
+	// which calls makeVisible() when the token carries the read:sensitive
+	// ability. A token without it gets "" for both, same as every other
+	// sensitive field in this provider (env var values, S3 keys, db
+	// credentials) — see keepPriorIfHidden.
+	ClientSecret  string `json:"client_secret"`
+	WebhookSecret string `json:"webhook_secret"`
+	// PrivateKeyID is the numeric id of the linked private key — never
+	// hidden, always present — there is no way to resolve it to a uuid
+	// without a separate /security/keys lookup (see resolvePrivateKeyUUID in
+	// the provider layer).
+	PrivateKeyID int64 `json:"private_key_id"`
+	IsSystemWide bool  `json:"is_system_wide"`
 }
 
 // GithubAppRequest is the create/update body. ClientSecret, WebhookSecret and
