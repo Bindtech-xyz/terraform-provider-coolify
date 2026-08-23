@@ -298,6 +298,27 @@ attach (`coolify_resource_tag`) but matched *exactly* (case-sensitive) on deploy
 `findTag` and `deploymentResource.trigger` normalize to lowercase client-side to
 compensate; don't remove either normalization.
 
+`POST /deploy` has a second, unrelated bug affecting applications specifically:
+`queue_application_deployment` (`bootstrap/helpers/applications.php`) checks for an
+existing `in_progress`/`queued` deployment of the same application+commit before
+creating a new queue row — e.g. `coolify_application.instant_deploy` already started
+one at create time, and a `coolify_deployment` triggered right after it on the same
+apply races this check. When it finds one, it returns `{"status": "skipped",
+"deployment_uuid": <the REAL existing deployment's uuid>}` — but
+`DeployController::deploy_resource` generates its own `deployment_uuid` via
+`new_public_id()` *before* calling that check, discards the real one on the skipped
+path, and returns its own instead. That uuid was never written to
+`ApplicationDeploymentQueue`, so polling it 404s forever — not a replication-lag race,
+retrying the same GET cannot help. `client.Deploy` detects the skip via its exact
+message (`"already queued for this commit"`) and resolves the real, currently-active
+deployment via `ListApplicationDeployments` instead of trusting what `/deploy`
+returned (falls back to the newest deployment overall if the race window already
+closed by the time it resolves). Found live: `coolify_deployment`'s very first apply
+right after creating an `instant_deploy = true` application 404s on the deployment
+it just "triggered", while the actual deployment (the one `instant_deploy` started)
+succeeds — a false negative that fails the one apply everyone's watching most
+closely.
+
 Watch for divergent `$allowedFields` whitelists between an object's create and update
 controller methods — found four times so far, all reported live by the same consumer
 against 4.3.x, all real upstream regressions rather than intentional immutability:
