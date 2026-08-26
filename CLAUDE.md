@@ -174,6 +174,26 @@ Deliberate design choices (do not "fix" these):
   discriminator, `cloudServerBody` resolves the image-field type difference:
   Hetzner int id vs DigitalOcean string slug). Destroy only deregisters — the VM
   survives at the provider (warning emitted).
+- `coolify_s3_storage`'s `is_usable` is never set to `true` by `POST`/`PATCH
+  /s3-storages` themselves (confirmed against the controller source: `store()`
+  takes `is_usable` straight from the request body, defaulting to `false`) — the
+  ONLY path that ever calls `S3Storage::testConnection(shouldSave: true)` is
+  `POST /s3-storages/{uuid}/validate`. Nothing else revalidates it periodically
+  (no scheduled job does this; only `VolumeBackupJob`/`DatabaseBackupJob` happen
+  to call it as a side effect of actually running a backup). A storage created by
+  this provider therefore stayed permanently `is_usable = false`, and any
+  `coolify_volume_backup`/`coolify_database_backup` referencing it 422ed with
+  "Select a usable S3 storage owned by your team." — a chicken-and-egg the
+  practitioner could not resolve by re-applying, since recreating the storage
+  reproduces the exact same unset flag. `s3StorageResource.validateAndRefresh`
+  now calls `/validate` after every Create/Update and re-reads the storage so
+  `is_usable` reflects the real, just-tested result; a failed connection test
+  downgrades to a warning (the storage genuinely exists, must not be left
+  untracked in state) rather than failing the apply. `coolify_volume_backup`'s
+  `explainS3StorageError` separately improves the 422 message itself, for the
+  case where the connection test genuinely fails (bad credentials, unreachable
+  endpoint) — it looks up the referenced storage and names it as the actual
+  cause instead of relaying Coolify's generic validation message.
 - `coolify_volume_backup` has NO read API (PUT upsert only): Read echoes state,
   drift reconciles on apply. `coolify_resource_action` is fire-and-forget
   (re-runs via `triggers` map, RequiresReplace everywhere).
