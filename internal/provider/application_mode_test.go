@@ -150,6 +150,46 @@ func TestApplicationToRequestDockerfileTargetBuildUpdateOnly(t *testing.T) {
 	}
 }
 
+// TestApplicationToRequestOmitsBuildPackForDockerImage locks in a regression
+// reported live: build_pack is Optional+Computed, and for a dockerimage-mode
+// application Coolify only ever reports back the literal string "dockerimage"
+// on read — which state then adopts and round-trips on every later Update.
+// Coolify's own BuildPackTypes enum (confirmed against the controller source)
+// is exactly {nixpacks, static, dockerfile, dockercompose, railpack} — no
+// "dockerimage" member — so update_by_uuid's Rule::enum validation on
+// build_pack always 422s with "The selected build pack is invalid." for this
+// mode, on literally any attribute change. build_pack must be omitted
+// entirely for dockerimage mode, both on create and update; every other
+// mode's build_pack value is a real, settable enum member and must still be
+// sent both ways.
+func TestApplicationToRequestOmitsBuildPackForDockerImage(t *testing.T) {
+	dockerImage := applicationResourceModel{
+		Name:                    types.StringValue("api"),
+		DockerRegistryImageName: types.StringValue("nginx"),
+		BuildPack:               types.StringValue("dockerimage"),
+	}
+
+	for _, create := range []bool{true, false} {
+		req := applicationToRequest(dockerImage, create)
+		if req.BuildPack != nil {
+			t.Errorf("dockerimage mode must never send build_pack, create=%v got %+v", create, req.BuildPack)
+		}
+	}
+
+	gitApp := applicationResourceModel{
+		Name:          types.StringValue("api"),
+		GitRepository: types.StringValue("https://github.com/a/b"),
+		BuildPack:     types.StringValue("nixpacks"),
+	}
+
+	for _, create := range []bool{true, false} {
+		req := applicationToRequest(gitApp, create)
+		if req.BuildPack == nil || *req.BuildPack != "nixpacks" {
+			t.Errorf("non-dockerimage mode must still send build_pack, create=%v got %+v", create, req.BuildPack)
+		}
+	}
+}
+
 // TestApplicationToRequestManualWebhookSecretsSentBothWays confirms the four
 // manual_webhook_secret_* fields have no create/update whitelist mismatch
 // (confirmed against the controller source — present in both allowed-fields

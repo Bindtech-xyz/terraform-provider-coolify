@@ -74,6 +74,18 @@ Deliberate design choices (do not "fix" these):
   `health_check_command` (with `health_check_type = "cmd"`) is what makes a
   probe-less image (no `curl`/`wget` — distroless, scratch, Bun) deployable at all,
   since Coolify's default HTTP probe hard-requires one of them inside the container.
+  `build_pack` is `Optional`+`Computed`: for non-git modes (dockerfile/dockerimage)
+  Coolify reports back the effective build strategy instead of accepting a configured
+  one. For dockerimage mode specifically, `applicationToRequest` omits `build_pack`
+  entirely rather than round-tripping the adopted value — Coolify's own
+  `BuildPackTypes` enum (confirmed against the controller source) is exactly
+  `{nixpacks, static, dockerfile, dockercompose, railpack}`, no `dockerimage` member,
+  so `update_by_uuid`'s `Rule::enum(BuildPackTypes::class)` validation 422s with "The
+  selected build pack is invalid." on literally any attribute change once state has
+  adopted `"dockerimage"` from a prior Read — reported live (RedisInsight deployment,
+  image mode) as every subsequent apply failing until `-replace` forced a recreate.
+  `dockerfile` mode isn't affected: it's a real enum member, so its `build_pack`
+  round-trips fine.
 - `coolify_database` is ONE resource with an `engine` attribute (8 engines) and the
   union of engine-specific fields. Coolify 422s when fields of another engine are
   sent, on ALL of them at once regardless of which single attribute the update
