@@ -243,6 +243,10 @@ func (c *Client) patch(ctx context.Context, path string, body, out any) error {
 	return c.do(ctx, http.MethodPatch, path, body, out)
 }
 
+func (c *Client) put(ctx context.Context, path string, body, out any) error {
+	return c.do(ctx, http.MethodPut, path, body, out)
+}
+
 func (c *Client) delete(ctx context.Context, path string) error {
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }

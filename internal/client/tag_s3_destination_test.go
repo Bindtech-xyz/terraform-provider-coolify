@@ -26,13 +26,35 @@ func TestS3StorageValidatePath(t *testing.T) {
 	var gotPath string
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		_, _ = w.Write([]byte(`{"message":"ok"}`))
+		_, _ = w.Write([]byte(`{"valid":true,"message":"S3 storage connection is valid."}`))
 	}))
-	if err := c.ValidateS3Storage(context.Background(), "s3x"); err != nil {
+	result, err := c.ValidateS3Storage(context.Background(), "s3x")
+	if err != nil {
 		t.Fatalf("ValidateS3Storage: %v", err)
 	}
 	if want := "/api/v1/s3-storages/s3x/validate"; gotPath != want {
 		t.Errorf("path = %q, want %q", gotPath, want)
+	}
+	if !result.Valid || result.Message != "S3 storage connection is valid." {
+		t.Errorf("result = %+v", result)
+	}
+}
+
+// TestS3StorageValidateReportsFailureWithoutError locks in that a failed
+// connection test (bad credentials, unreachable endpoint) is a normal
+// {"valid": false, "message": "..."} response, HTTP 200 — not a transport
+// error. Confirmed against the controller source: validateStorage() always
+// returns response()->json([...]), regardless of the outcome.
+func TestS3StorageValidateReportsFailureWithoutError(t *testing.T) {
+	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"valid":false,"message":"Could not connect: Access Denied"}`))
+	}))
+	result, err := c.ValidateS3Storage(context.Background(), "s3x")
+	if err != nil {
+		t.Fatalf("ValidateS3Storage: %v", err)
+	}
+	if result.Valid || result.Message != "Could not connect: Access Denied" {
+		t.Errorf("result = %+v", result)
 	}
 }
 

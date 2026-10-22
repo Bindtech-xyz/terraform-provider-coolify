@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/base64"
 	"net/url"
 )
 
@@ -75,4 +76,25 @@ func (c *Client) GetServerCloudflareTunnel(ctx context.Context, serverUUID strin
 // (is_cloudflare_tunnel).
 func (c *Client) UpdateServerCloudflareTunnel(ctx context.Context, serverUUID string, body map[string]any) error {
 	return c.patchServerSetting(ctx, serverUUID, "cloudflare-tunnel", body)
+}
+
+// SaveServerProxyConfiguration saves the raw proxy docker-compose YAML
+// (PUT /servers/{uuid}/proxy/configuration) -- this is the only way to reach
+// Traefik's STATIC configuration (e.g. --accesslog), which can never come from
+// the dynamic file provider or Docker labels. Confirmed against
+// SaveProxyConfiguration::handle(): it writes last_saved_proxy_configuration
+// and rewrites docker-compose.yml on the server, but does NOT restart the
+// proxy container itself -- call RestartServerProxy afterwards to actually
+// apply it. The API prefers base64 for multi-line content (same convention as
+// other compose payloads in this client).
+func (c *Client) SaveServerProxyConfiguration(ctx context.Context, serverUUID, configuration string) error {
+	body := map[string]any{"configuration": base64.StdEncoding.EncodeToString([]byte(configuration))}
+	return c.put(ctx, "/servers/"+url.PathEscape(serverUUID)+"/proxy/configuration", body, nil)
+}
+
+// RestartServerProxy queues a proxy restart (POST /servers/{uuid}/proxy/restart)
+// so a configuration saved via SaveServerProxyConfiguration actually takes
+// effect on the running container.
+func (c *Client) RestartServerProxy(ctx context.Context, serverUUID string) error {
+	return c.post(ctx, "/servers/"+url.PathEscape(serverUUID)+"/proxy/restart", nil, nil)
 }

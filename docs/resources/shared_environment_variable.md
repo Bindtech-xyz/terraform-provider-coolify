@@ -3,12 +3,12 @@
 page_title: "coolify_shared_environment_variable Resource - coolify"
 subcategory: "Configuration & Backups"
 description: |-
-  A shared environment variable, usable as {{team.KEY}}, {{project.KEY}}, {{environment.KEY}} or {{server.KEY}} in resources. The scope attribute selects where it lives.
+  A shared environment variable, usable as {{team.KEY}}, {{project.KEY}}, {{environment.KEY}} or {{server.KEY}} in resources. The scope attribute selects where it lives. It is not injected into any application's environment automatically — 'shared' means available for reference, not auto-applied. To actually inject one, reference it from a coolify_environment_variable.value on the target application (e.g. value = "{{project.POSTGRES_HOST}}").
 ---
 
 # coolify_shared_environment_variable (Resource)
 
-A shared environment variable, usable as `{{team.KEY}}`, `{{project.KEY}}`, `{{environment.KEY}}` or `{{server.KEY}}` in resources. The `scope` attribute selects where it lives.
+A shared environment variable, usable as `{{team.KEY}}`, `{{project.KEY}}`, `{{environment.KEY}}` or `{{server.KEY}}` in resources. The `scope` attribute selects where it lives. It is **not** injected into any application's environment automatically — 'shared' means available for reference, not auto-applied. To actually inject one, reference it from a `coolify_environment_variable.value` on the target application (e.g. `value = "{{project.POSTGRES_HOST}}"`).
 
 ## Example Usage
 

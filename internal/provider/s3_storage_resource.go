@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -90,8 +91,15 @@ func (r *s3StorageResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Sensitive:           true,
 			},
 			"is_usable": schema.BoolAttribute{
-				MarkdownDescription: "Whether Coolify validated connectivity to the bucket.",
-				Computed:            true,
+				MarkdownDescription: "Whether Coolify validated connectivity to the bucket (via " +
+					"`ListObjectsV2`). `POST`/`PATCH /s3-storages` never set this themselves — " +
+					"Create/Update follow up with `POST /s3-storages/{uuid}/validate` so this " +
+					"reflects the real state instead of Coolify's own default of `false`, which " +
+					"otherwise sticks forever (nothing else calls that endpoint until a backup job " +
+					"happens to run). A `false` here after a successful apply means the connection " +
+					"check itself failed — see the warning diagnostic for why; `coolify_volume_backup` " +
+					"and `coolify_database_backup` both reject a storage in this state with a 422.",
+				Computed: true,
 			},
 		},
 	}
@@ -113,6 +121,47 @@ func (r *s3StorageResource) toRequest(m s3StorageResourceModel) client.S3Storage
 	}
 }
 
+// validateAndRefresh calls POST /s3-storages/{uuid}/validate — the only code
+// path that ever sets is_usable to true (see the client-side doc comment on
+// ValidateS3Storage) — then re-reads the storage so is_usable reflects the
+// real, just-tested state. Failure at either step (transport error, or a
+// successful-but-invalid connection test) downgrades to a warning rather
+// than an error: the storage genuinely exists and must not be left
+// untracked in state over a field that Read will simply show as still
+// false, matching this provider's established follow-up-call pattern (e.g.
+// coolify_application.dockerfile_target_build,
+// coolify_database.health_check_*).
+func (r *s3StorageResource) validateAndRefresh(ctx context.Context, storage *client.S3Storage, diags *diag.Diagnostics) *client.S3Storage {
+	validation, err := r.client.ValidateS3Storage(ctx, storage.UUID)
+	if err != nil {
+		diags.AddWarning(
+			fmt.Sprintf("S3 storage %s created/updated, but connection validation failed to run", storage.UUID),
+			fmt.Sprintf("The storage exists in Coolify, but calling /validate failed: %s. "+
+				"is_usable may not reflect the real connection state; re-run apply to retry.", err),
+		)
+		return storage
+	}
+	if !validation.Valid {
+		diags.AddWarning(
+			fmt.Sprintf("S3 storage %s failed its connection check", storage.UUID),
+			fmt.Sprintf("Coolify could not connect to the bucket: %s. is_usable is false, and "+
+				"coolify_volume_backup/coolify_database_backup will reject this storage with a 422 "+
+				"until it passes.", validation.Message),
+		)
+	}
+
+	refreshed, err := r.client.GetS3Storage(ctx, storage.UUID)
+	if err != nil {
+		diags.AddWarning(
+			fmt.Sprintf("S3 storage %s validated, but the refreshed state could not be read", storage.UUID),
+			fmt.Sprintf("Validation ran successfully, but re-reading the storage failed: %s. "+
+				"is_usable in state may be stale until the next apply.", err),
+		)
+		return storage
+	}
+	return refreshed
+}
+
 func (r *s3StorageResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan s3StorageResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -125,6 +174,7 @@ func (r *s3StorageResource) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError("Unable to create Coolify S3 storage", err.Error())
 		return
 	}
+	storage = r.validateAndRefresh(ctx, storage, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, s3StorageToModel(storage, plan))...)
 }
@@ -167,6 +217,11 @@ func (r *s3StorageResource) Update(ctx context.Context, req resource.UpdateReque
 		)
 		return
 	}
+	// Re-validate on every update, not just when credentials change: it's a
+	// single cheap ListObjectsV2 call, and re-checking unconditionally is
+	// simpler than tracking which specific fields actually affect
+	// connectivity.
+	storage = r.validateAndRefresh(ctx, storage, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, s3StorageToModel(storage, plan))...)
 }

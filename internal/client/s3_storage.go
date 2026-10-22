@@ -75,7 +75,26 @@ func (c *Client) DeleteS3Storage(ctx context.Context, uuid string) error {
 	return c.delete(ctx, "/s3-storages/"+url.PathEscape(uuid))
 }
 
-// ValidateS3Storage asks Coolify to test connectivity to the bucket.
-func (c *Client) ValidateS3Storage(ctx context.Context, uuid string) error {
-	return c.post(ctx, "/s3-storages/"+url.PathEscape(uuid)+"/validate", nil, nil)
+// S3StorageValidation is the result of POST /s3-storages/{uuid}/validate.
+type S3StorageValidation struct {
+	Valid   bool   `json:"valid"`
+	Message string `json:"message"`
+}
+
+// ValidateS3Storage asks Coolify to test connectivity to the bucket (via
+// ListObjectsV2) and persists the result on is_usable
+// (S3Storage::testConnection(shouldSave: true)) — this is the ONLY code path
+// that ever sets is_usable to true; POST/PATCH /s3-storages never call it
+// (confirmed against the controller source: store()/update() take is_usable
+// straight from the request body, defaulting to false on create), so a
+// storage created by this provider stays permanently unusable until
+// something calls this endpoint. Returns the result even when Valid is
+// false — that's a normal outcome (bad credentials, unreachable endpoint),
+// not a transport error.
+func (c *Client) ValidateS3Storage(ctx context.Context, uuid string) (*S3StorageValidation, error) {
+	var out S3StorageValidation
+	if err := c.post(ctx, "/s3-storages/"+url.PathEscape(uuid)+"/validate", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

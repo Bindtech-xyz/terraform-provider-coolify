@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -33,6 +34,7 @@ type serverProxySettingsModel struct {
 	RedirectEnabled     types.Bool   `tfsdk:"redirect_enabled"`
 	RedirectURL         types.String `tfsdk:"redirect_url"`
 	GenerateExactLabels types.Bool   `tfsdk:"generate_exact_labels"`
+	Configuration       types.String `tfsdk:"configuration"`
 }
 
 type serverDockerCleanupModel struct {
@@ -110,6 +112,26 @@ func (r *serverSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 					"generate_exact_labels": schema.BoolAttribute{
 						MarkdownDescription: "Generate exact proxy labels.",
 						Optional:            true,
+					},
+					"configuration": schema.StringAttribute{
+						MarkdownDescription: "Raw proxy docker-compose YAML (`PUT " +
+							"/servers/{uuid}/proxy/configuration`). This is the only way to reach " +
+							"Traefik's STATIC configuration (e.g. `--accesslog`) — it can never come " +
+							"from the dynamic file provider or Docker labels, since those are runtime " +
+							"concepts, not container launch arguments. Coolify writes the exact string " +
+							"given here to `docker-compose.yml` on the server but does **not** restart " +
+							"the proxy container by itself, so this provider follows up with a restart " +
+							"whenever the configured value actually changes (a no-op on applies that " +
+							"only touch another `proxy.*` field, to avoid an unnecessary restart of " +
+							"live ingress traffic); a failed restart is a warning, not an error — the " +
+							"configuration is already saved and will be picked up on the next one. " +
+							"Coolify requires the compose's proxy service to keep " +
+							"`container_name: coolify-proxy` or it rejects the save outright. Only " +
+							"echoed back to state by a token with `read:sensitive`, same as other " +
+							"secret-bearing fields in this provider — a token without it will see no " +
+							"drift regardless of what's actually stored.",
+						Optional:  true,
+						Sensitive: true,
 					},
 				},
 			},
@@ -308,6 +330,36 @@ func (r *serverSettingsResource) apply(ctx context.Context, plan serverSettingsR
 	return nil
 }
 
+// applyProxyConfiguration saves the raw proxy compose and restarts the proxy
+// to pick it up, but only when the configured value actually changed — a
+// restart briefly interrupts every ingress request through it, so it's not
+// worth paying on an apply that only touched an unrelated proxy.* field (e.g.
+// generate_exact_labels). prior is nil on Create (nothing to compare against,
+// so a configured value is always applied).
+func (r *serverSettingsResource) applyProxyConfiguration(ctx context.Context, server string, p, prior *serverProxySettingsModel, diags *diag.Diagnostics) {
+	if p == nil || p.Configuration.IsNull() || p.Configuration.IsUnknown() {
+		return
+	}
+	if prior != nil && !prior.Configuration.IsNull() && !prior.Configuration.IsUnknown() &&
+		prior.Configuration.ValueString() == p.Configuration.ValueString() {
+		return
+	}
+
+	if err := r.client.SaveServerProxyConfiguration(ctx, server, p.Configuration.ValueString()); err != nil {
+		diags.AddError("Unable to save Coolify proxy configuration", err.Error())
+		return
+	}
+	if err := r.client.RestartServerProxy(ctx, server); err != nil {
+		diags.AddWarning(
+			fmt.Sprintf("Proxy configuration saved, but the restart failed to queue for server %s", server),
+			fmt.Sprintf("The new configuration is written to the database and to disk, but Coolify's "+
+				"save endpoint never restarts the container itself, so the running proxy hasn't picked "+
+				"it up yet: %s. Re-run apply, or restart the proxy from the Coolify UI, to make it "+
+				"take effect.", err),
+		)
+	}
+}
+
 // refresh reads back each configured block. Only fields the practitioner set
 // are refreshed, so unmanaged settings never cause diffs.
 func (r *serverSettingsResource) refresh(ctx context.Context, m serverSettingsResourceModel) (serverSettingsResourceModel, error) {
@@ -349,6 +401,7 @@ func (r *serverSettingsResource) refresh(ctx context.Context, m serverSettingsRe
 		p.RedirectEnabled = readBool(settings, "redirect_enabled", p.RedirectEnabled)
 		p.RedirectURL = readString(settings, "redirect_url", p.RedirectURL)
 		p.GenerateExactLabels = readBool(settings, "generate_exact_labels", p.GenerateExactLabels)
+		p.Configuration = readString(settings, "configuration", p.Configuration)
 	}
 	if d := m.DockerCleanup; d != nil {
 		settings, err := r.client.GetServerDockerCleanup(ctx, server)
@@ -406,6 +459,10 @@ func (r *serverSettingsResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError("Unable to apply Coolify server settings", err.Error())
 		return
 	}
+	r.applyProxyConfiguration(ctx, plan.ServerUUID.ValueString(), plan.Proxy, nil, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	state, err := r.refresh(ctx, plan)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to read back Coolify server settings", err.Error())
@@ -442,9 +499,18 @@ func (r *serverSettingsResource) Update(ctx context.Context, req resource.Update
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var priorState serverSettingsResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &priorState)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if err := r.apply(ctx, plan); err != nil {
 		resp.Diagnostics.AddError("Unable to update Coolify server settings", err.Error())
+		return
+	}
+	r.applyProxyConfiguration(ctx, plan.ServerUUID.ValueString(), plan.Proxy, priorState.Proxy, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	state, err := r.refresh(ctx, plan)

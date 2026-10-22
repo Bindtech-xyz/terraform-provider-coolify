@@ -41,7 +41,7 @@ resource "coolify_s3_storage" "backups" {
 
 ### Read-Only
 
-- `is_usable` (Boolean) Whether Coolify validated connectivity to the bucket.
+- `is_usable` (Boolean) Whether Coolify validated connectivity to the bucket (via `ListObjectsV2`). `POST`/`PATCH /s3-storages` never set this themselves — Create/Update follow up with `POST /s3-storages/{uuid}/validate` so this reflects the real state instead of Coolify's own default of `false`, which otherwise sticks forever (nothing else calls that endpoint until a backup job happens to run). A `false` here after a successful apply means the connection check itself failed — see the warning diagnostic for why; `coolify_volume_backup` and `coolify_database_backup` both reject a storage in this state with a 422.
 - `uuid` (String) Server-assigned identifier.
 
 ## Import

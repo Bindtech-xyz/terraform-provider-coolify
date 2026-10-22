@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -176,6 +177,31 @@ func (r *volumeBackupResource) upsert(ctx context.Context, plan volumeBackupReso
 	return volumeBackupToModel(schedule, plan), nil
 }
 
+// explainS3StorageError adds context to a 422 on s3_storage_uuid ("Select a
+// usable S3 storage owned by your team.") — a raw relay of that message
+// gives no hint that the actual cause almost always lives on the referenced
+// coolify_s3_storage, not this resource: Coolify only ever sets is_usable to
+// true via POST /s3-storages/{uuid}/validate (see
+// s3StorageResource.validateAndRefresh), so a storage whose credentials
+// don't work stays is_usable = false forever and every backup schedule
+// referencing it 422s here, no matter what this resource's own config says.
+func (r *volumeBackupResource) explainS3StorageError(ctx context.Context, err error, s3StorageUUID string) string {
+	var apiErr *client.Error
+	if s3StorageUUID == "" || !errors.As(err, &apiErr) || apiErr.StatusCode != 422 {
+		return err.Error()
+	}
+	if _, hasFieldError := apiErr.Validation["s3_storage_uuid"]; !hasFieldError {
+		return err.Error()
+	}
+	storage, getErr := r.client.GetS3Storage(ctx, s3StorageUUID)
+	if getErr != nil || storage.IsUsable {
+		return err.Error()
+	}
+	return fmt.Sprintf("%s\n\nThe referenced coolify_s3_storage (%s) has is_usable = false — "+
+		"Coolify's connection check for it failed. Check its endpoint/bucket/credentials; the "+
+		"is_usable attribute on that resource reflects the actual test result.", err.Error(), s3StorageUUID)
+}
+
 func (r *volumeBackupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan volumeBackupResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -185,7 +211,10 @@ func (r *volumeBackupResource) Create(ctx context.Context, req resource.CreateRe
 
 	state, err := r.upsert(ctx, plan)
 	if err != nil {
-		resp.Diagnostics.AddError("Unable to create Coolify volume backup schedule", err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to create Coolify volume backup schedule",
+			r.explainS3StorageError(ctx, err, plan.S3StorageUUID.ValueString()),
+		)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
@@ -212,7 +241,10 @@ func (r *volumeBackupResource) Update(ctx context.Context, req resource.UpdateRe
 
 	state, err := r.upsert(ctx, plan)
 	if err != nil {
-		resp.Diagnostics.AddError("Unable to update Coolify volume backup schedule", err.Error())
+		resp.Diagnostics.AddError(
+			"Unable to update Coolify volume backup schedule",
+			r.explainS3StorageError(ctx, err, plan.S3StorageUUID.ValueString()),
+		)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)

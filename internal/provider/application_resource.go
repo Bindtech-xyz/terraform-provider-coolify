@@ -629,7 +629,6 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		DockerfileLocation:           stringOrNil(m.DockerfileLocation),
 		DockerRegistryImageName:      stringOrNil(m.DockerRegistryImageName),
 		DockerRegistryImageTag:       stringOrNil(m.DockerRegistryImageTag),
-		BuildPack:                    stringOrNil(m.BuildPack),
 		StaticImage:                  stringOrNil(m.StaticImage),
 		InstallCommand:               stringOrNil(m.InstallCommand),
 		BuildCommand:                 stringOrNil(m.BuildCommand),
@@ -700,6 +699,21 @@ func applicationToRequest(m applicationResourceModel, create bool) client.Applic
 		// it can only ever be sent on update — Create() applies a configured
 		// value via a follow-up UpdateApplication call right after creating.
 		req.DockerfileTargetBuild = stringOrNil(m.DockerfileTargetBuild)
+	}
+	// build_pack is Optional+Computed: for a dockerimage-mode application,
+	// Coolify has no such member in its own BuildPackTypes enum (confirmed
+	// against the controller source — it's exactly {nixpacks, static,
+	// dockerfile, dockercompose, railpack}) and only ever reports back the
+	// literal string "dockerimage" on read, adopted into state by
+	// keepNullIfEmpty. Sending that same value back on a later PATCH always
+	// 422s with "The selected build pack is invalid.", on any attribute
+	// change, since update_by_uuid validates build_pack with Rule::enum
+	// whenever the key is present at all. Omit it entirely for this mode;
+	// every other mode's build_pack value is a real, settable enum member.
+	if applicationType(m) == client.ApplicationTypeDockerImage {
+		req.BuildPack = nil
+	} else {
+		req.BuildPack = stringOrNil(m.BuildPack)
 	}
 	return req
 }

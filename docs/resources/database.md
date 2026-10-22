@@ -49,12 +49,22 @@ output "database_url" {
 - `dragonfly_password` (String, Sensitive) Dragonfly password (dragonfly engine).
 - `environment_name` (String) Environment name. Exactly one of `environment_name`/`environment_uuid`.
 - `environment_uuid` (String) Environment UUID.
+- `health_check_enabled` (Boolean) Enable the database health check probe. Coolify defaults unset to `true`.
+- `health_check_interval` (Number) Seconds between probes. Coolify defaults unset to `15`.
+- `health_check_retries` (Number) Consecutive failures before the database is marked unhealthy. Coolify defaults unset to `5`.
+- `health_check_start_period` (Number) Grace period in seconds during which probe failures don't count, for a slow-starting database. Coolify defaults unset to `5`.
+- `health_check_timeout` (Number) Seconds before a probe attempt is considered failed. Coolify defaults unset to `5`.
 - `image` (String) Docker image override (e.g. `postgres:16-alpine`).
 - `instant_deploy` (Boolean) Start the database right after creation. Defaults to `false`.
 - `is_public` (Boolean) Expose the database on a public port. Defaults to `false`.
 - `keydb_password` (String, Sensitive) KeyDB password (keydb engine).
+- `limits_cpu_shares` (Number) Relative CPU weight. Coolify defaults unset to `1024`.
 - `limits_cpus` (String) CPU limit (e.g. `0.5`). Coolify defaults unset to `0` (unlimited).
+- `limits_cpuset` (String) Comma-separated CPU cores to pin to (e.g. `0,1`).
 - `limits_memory` (String) Memory limit (e.g. `512m`). Coolify defaults unset to `0` (unlimited).
+- `limits_memory_reservation` (String) Soft memory reservation (e.g. `256m`). Coolify defaults unset to `0` (none).
+- `limits_memory_swap` (String) Memory + swap limit (e.g. `1g`). Coolify defaults unset to `0` (unlimited).
+- `limits_memory_swappiness` (Number) Kernel swappiness (0-100). Coolify defaults unset to `60`.
 - `mariadb_database` (String) Initial database name (mariadb engine).
 - `mariadb_password` (String, Sensitive) MariaDB user password (mariadb engine).
 - `mariadb_root_password` (String, Sensitive) MariaDB root password (mariadb engine).
@@ -69,6 +79,8 @@ output "database_url" {
 - `name` (String) Database name. Coolify generates one when omitted.
 - `postgres_conf` (String) Base64-encoded postgresql.conf (postgresql engine).
 - `postgres_db` (String) Initial database name (postgresql engine).
+- `postgres_host_auth_method` (String) `pg_hba.conf` auth method for the initial entries (postgresql engine), e.g. `trust` or `scram-sha-256`.
+- `postgres_initdb_args` (String) Arguments passed to `initdb` at first startup (postgresql engine) — e.g. locale/collation flags. Fixes the cluster's locale permanently; only takes effect on the very first start.
 - `postgres_password` (String, Sensitive) PostgreSQL password (postgresql engine).
 - `postgres_user` (String, Sensitive) PostgreSQL user (postgresql engine).
 - `public_port` (Number) Host port when `is_public` is `true`.

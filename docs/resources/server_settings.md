@@ -85,6 +85,7 @@ Optional:
 
 Optional:
 
+- `configuration` (String, Sensitive) Raw proxy docker-compose YAML (`PUT /servers/{uuid}/proxy/configuration`). This is the only way to reach Traefik's STATIC configuration (e.g. `--accesslog`) — it can never come from the dynamic file provider or Docker labels, since those are runtime concepts, not container launch arguments. Coolify writes the exact string given here to `docker-compose.yml` on the server but does **not** restart the proxy container by itself, so this provider follows up with a restart whenever the configured value actually changes (a no-op on applies that only touch another `proxy.*` field, to avoid an unnecessary restart of live ingress traffic); a failed restart is a warning, not an error — the configuration is already saved and will be picked up on the next one. Coolify requires the compose's proxy service to keep `container_name: coolify-proxy` or it rejects the save outright. Only echoed back to state by a token with `read:sensitive`, same as other secret-bearing fields in this provider — a token without it will see no drift regardless of what's actually stored.
 - `generate_exact_labels` (Boolean) Generate exact proxy labels.
 - `redirect_enabled` (Boolean) Redirect requests for unknown hosts.
 - `redirect_url` (String) URL unknown hosts are redirected to.

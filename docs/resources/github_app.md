@@ -38,19 +38,19 @@ resource "coolify_github_app" "org" {
 ### Required
 
 - `app_id` (Number) Numeric App ID from GitHub.
-- `client_id` (String) OAuth client id of the App.
-- `client_secret` (String, Sensitive) OAuth client secret of the App.
 - `installation_id` (Number) Numeric installation ID from GitHub.
 - `name` (String) Name of the GitHub App.
 - `private_key_uuid` (String) UUID of the `coolify_private_key` holding the App's private key.
-- `webhook_secret` (String, Sensitive) Webhook secret of the App.
 
 ### Optional
 
 - `api_url` (String) GitHub API URL. Defaults to `https://api.github.com`.
+- `client_id` (String) OAuth client id of the App. Required to create it via this provider; not sensitive, so it's always adopted from Coolify — doesn't need to be supplied for an imported App.
+- `client_secret` (String, Sensitive) OAuth client secret of the App. Required to create it via this provider; a token with the `read:sensitive` ability adopts it from Coolify on import, so it doesn't need to be supplied for an imported App.
 - `html_url` (String) GitHub web URL. Defaults to `https://github.com`.
 - `is_system_wide` (Boolean) Make the App usable by every team. Defaults to `false`.
-- `organization` (String) GitHub organization the App belongs to (omit for a user App).
+- `organization` (String) GitHub organization the App belongs to (omit for a user App). Coolify's manifest-flow install captures this from GitHub itself for an organization-owned App, independent of anything configured here — `Computed` so a left-null config doesn't fight a server-populated value.
+- `webhook_secret` (String, Sensitive) Webhook secret of the App. Required to create it via this provider; a token with the `read:sensitive` ability adopts it from Coolify on import, so it doesn't need to be supplied for an imported App.
 
 ### Read-Only
 
