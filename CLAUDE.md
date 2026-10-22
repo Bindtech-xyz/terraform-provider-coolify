@@ -142,7 +142,29 @@ Deliberate design choices (do not "fix" these):
   (server settings) — the API never deletes those objects. Singleton client methods use
   map[string]any bodies on purpose (Laravel fillable-driven field sets); the typed
   schema lives in the resource layer, and only configured fields are sent/refreshed so
-  unmanaged settings never diff.
+  unmanaged settings never diff. `coolify_server_settings.proxy.configuration` is the
+  one exception to the generic `map[string]any` PATCH-to-`/proxy` path: it's raw
+  Traefik docker-compose YAML via `PUT /servers/{uuid}/proxy/configuration`, the only
+  way to reach Traefik's STATIC config (e.g. `--accesslog`) — confirmed it can't come
+  from the dynamic file provider or Docker labels (both runtime concepts), and
+  confirmed the route/controller/action exist and work exactly as wanted (requested
+  live by a consumer who needed proxy access logs for CrowdSec/incident response and
+  initially assumed this needed an upstream Coolify change — it didn't, the API
+  already supported it, just not this provider). Saving does NOT restart the proxy
+  container by itself (confirmed against `SaveProxyConfiguration::handle()` — it only
+  rewrites `docker-compose.yml` on disk), so `applyProxyConfiguration` follows up with
+  `POST /proxy/restart`, but only when the configured value actually changed from
+  prior state — a restart briefly interrupts live ingress traffic, not worth paying
+  for an apply that only touched an unrelated `proxy.*` field. A failed restart is a
+  warning, not an error (the configuration is already persisted; same reasoning as
+  `coolify_s3_storage`'s `validateAndRefresh`). `Sensitive: true`, gated behind
+  `read:sensitive` on read like other secret-bearing fields (confirmed against
+  `ServerProxyController::payload()`). Separately, Coolify already has a built-in
+  `traffic_analytics_enabled` toggle that injects the same `--accesslog` flags
+  (`bootstrap/helpers/proxy.php::traefikAccessLogCommands()`) without needing raw
+  compose at all — but it's missing from `ServersController::update_server()`'s
+  `$allowedFields`, so it's Livewire-only today; that's a genuine upstream gap, not
+  something this provider can work around, unlike the raw-configuration path above.
 - `coolify_github_app` / `coolify_gitlab_app` are addressed by numeric id (not uuid) —
   the API has no single-app GET, reads filter the list. `coolify_github_app`'s
   `private_key_uuid` is genuinely unpatchable on upstream Coolify today:

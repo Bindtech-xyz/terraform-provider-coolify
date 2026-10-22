@@ -66,7 +66,9 @@ resource "coolify_application" "nginx" {
 - `destination_uuid` (String) Destination (Docker network) UUID. Required when the server has several destinations. Changing it forces replacement.
 - `docker_registry_image_name` (String) Docker image to run (e.g. `nginx`). Setting it selects the docker-image mode.
 - `docker_registry_image_tag` (String) Image tag. Defaults to `latest`.
-- `dockerfile` (String) Base64-encoded Dockerfile content. Setting it selects the dockerfile mode (use `base64encode(file(...))`).
+- `dockerfile` (String) Base64-encoded Dockerfile content. Setting it selects the dockerfile mode (use `base64encode(file(...))`). Coolify's `PATCH` `/applications/{uuid}` rejects this field outright (`This field is not allowed.`) — its allowed-fields whitelist for updates omits `dockerfile` entirely, unlike the create endpoint, which requires it. There is no supported way to change a Dockerfile's content in place, so changing this value forces replacement instead of a doomed update attempt.
+- `dockerfile_location` (String) Path to the Dockerfile inside the git repository (e.g. `/Dockerfile.web`). Only meaningful for git-repository sources; Coolify defaults to `/Dockerfile` at the repository root when unset. Accepted by both Coolify's create and update endpoints, unlike `dockerfile`/`dockerfile_target_build` below.
+- `dockerfile_target_build` (String) Named build stage to stop at, for a multi-stage Dockerfile. Coolify's create endpoints all reject this field (confirmed against the controller source — absent from every create allowed-fields list, present only in `update_by_uuid`'s), so a value configured at creation is applied via a follow-up update immediately after — if `instant_deploy` is also set, that first automatic build already started before the follow-up lands and won't see the target stage; later deploys will.
 - `domains` (String) Comma-separated FQDNs, e.g. `"https://app.example.com"`. Leave unset with `autogenerate_domain = true` to let Coolify assign one.
 - `environment_name` (String) Environment name (e.g. `production`). Exactly one of `environment_name` or `environment_uuid` must be set. Changing it forces replacement.
 - `environment_uuid` (String) Environment UUID. Changing it forces replacement.
@@ -74,16 +76,37 @@ resource "coolify_application" "nginx" {
 - `git_commit_sha` (String) Pin the deployment to a specific commit. Coolify defaults unset to `HEAD`.
 - `git_repository` (String) Git repository URL (public/deploy-key modes) or `org/repo` (GitHub App mode).
 - `github_app_uuid` (String) UUID of the GitHub App for private repositories. Setting it selects the private-github-app mode. Changing it forces replacement.
-- `health_check_enabled` (Boolean) Enable the container health check.
-- `health_check_path` (String) HTTP path probed by the health check (e.g. `/health`).
+- `health_check_command` (String) Command run inside the container for `health_check_type = "cmd"`. Required for images without `curl`/`wget` (Coolify's default HTTP probe needs one of them and refuses to start otherwise) — e.g. a distroless, scratch, or Bun image can use whatever it already ships.
+- `health_check_enabled` (Boolean) Enable the container health check. Coolify defaults unset to `false`.
+- `health_check_host` (String) Host probed by the health check. Coolify defaults unset to `localhost`.
+- `health_check_interval` (Number) Seconds between probes. Coolify defaults unset to `5`.
+- `health_check_method` (String) HTTP method used by the health check. Coolify defaults unset to `GET`.
+- `health_check_path` (String) HTTP path probed by the health check (e.g. `/health`). Coolify defaults unset to `/`.
+- `health_check_port` (String) Port probed by the health check, if different from the container's exposed port.
+- `health_check_response_text` (String) Substring expected in the response body, if any.
+- `health_check_retries` (Number) Consecutive failures before the container is marked unhealthy. Coolify defaults unset to `10`.
+- `health_check_return_code` (Number) Expected HTTP status code. Coolify defaults unset to `200`.
+- `health_check_scheme` (String) `http` or `https`. Coolify defaults unset to `http`.
+- `health_check_start_period` (Number) Grace period in seconds during which probe failures don't count, for a slow-starting container (e.g. one that runs database migrations before serving traffic). Coolify defaults unset to `5`.
+- `health_check_timeout` (Number) Seconds before a probe attempt is considered failed. Coolify defaults unset to `5`.
+- `health_check_type` (String) `http` (probe an HTTP endpoint) or `cmd` (run `health_check_command` inside the container). Coolify defaults unset to `http`.
 - `install_command` (String) Override the install command.
 - `instant_deploy` (Boolean) Queue a first deployment right after creation. Defaults to `false`.
 - `is_auto_deploy_enabled` (Boolean) Deploy automatically on git push (webhooks).
 - `is_force_https_enabled` (Boolean) Redirect HTTP to HTTPS.
 - `is_preview_deployments_enabled` (Boolean) Deploy pull-request previews.
 - `is_static` (Boolean) Serve the build output as a static site.
+- `limits_cpu_shares` (Number) Relative CPU weight. Coolify defaults unset to `1024`.
 - `limits_cpus` (String) CPU limit (e.g. `0.5`, `2`). Coolify defaults unset to `0` (unlimited).
+- `limits_cpuset` (String) Comma-separated CPU cores to pin to (e.g. `0,1`).
 - `limits_memory` (String) Memory limit (e.g. `512m`, `1g`). Coolify defaults unset to `0` (unlimited).
+- `limits_memory_reservation` (String) Soft memory reservation (e.g. `256m`). Coolify defaults unset to `0` (none).
+- `limits_memory_swap` (String) Memory + swap limit (e.g. `1g`). Coolify defaults unset to `0` (unlimited).
+- `limits_memory_swappiness` (Number) Kernel swappiness (0-100). Coolify defaults unset to `60`.
+- `manual_webhook_secret_bitbucket` (String, Sensitive) Secret for `/webhooks/source/bitbucket/events/manual`. Generated by Coolify if left unset.
+- `manual_webhook_secret_gitea` (String, Sensitive) Secret for `/webhooks/source/gitea/events/manual`. Generated by Coolify if left unset.
+- `manual_webhook_secret_github` (String, Sensitive) Secret for `/webhooks/source/github/events/manual`. Generated by Coolify if left unset.
+- `manual_webhook_secret_gitlab` (String, Sensitive) Secret for `/webhooks/source/gitlab/events/manual`. Generated by Coolify if left unset.
 - `name` (String) Application name. Coolify derives one when omitted.
 - `ports_exposes` (String) Comma-separated container ports to expose, e.g. `"3000"`.
 - `ports_mappings` (String) Comma-separated host:container port mappings, e.g. `"8080:3000"`.
